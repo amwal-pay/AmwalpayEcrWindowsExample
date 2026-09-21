@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Everything in the sample that is not a window: the terminal store, settings,
+    amount entry, form rules, config resolution and the transaction flow.
+
+    Plain net8.0 on purpose, so `dotnet test` runs it on any OS.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>AmwalECR.Example.Core</RootNamespace>
+    <AssemblyName>AmwalECR.Example.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EcrSdkDependency)' == 'project'">
+    <ProjectReference Include="$(EcrSdkProjectPath)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(EcrSdkDependency)' == 'nuget'">
+    <PackageReference Include="AmwalPay.Ecr" Version="$(EcrSdkVersion)" />
+  </ItemGroup>
+
+  <Target Name="ValidateEcrSdkDependency" BeforeTargets="BeforeBuild;BeforeResolveReferences"
+          Condition="'$(EcrSdkDependency)' != 'project' And '$(EcrSdkDependency)' != 'nuget'">
+    <Error Text="EcrSdkDependency must be 'project' or 'nuget' (was '$(EcrSdkDependency)')." />
+  </Target>
+
+</Project>

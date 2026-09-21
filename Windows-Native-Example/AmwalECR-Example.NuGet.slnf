@@ -1,0 +1,10 @@
+{
+  "solution": {
+    "path": "AmwalECR-Example.sln",
+    "projects": [
+      "src\\AmwalECR.Example.Core\\AmwalECR.Example.Core.csproj",
+      "src\\AmwalECR.Example\\AmwalECR.Example.csproj",
+      "tests\\AmwalECR.Example.Tests\\AmwalECR.Example.Tests.csproj"
+    ]
+  }
+}

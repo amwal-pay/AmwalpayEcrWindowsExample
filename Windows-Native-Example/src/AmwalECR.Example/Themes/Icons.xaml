@@ -1,0 +1,19 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        Vector artwork carried over from the Android sample's drawables. Android's
+        pathData is the same mini-language as WPF's, but its default fill rule is
+        non-zero, so each one says F1.
+    -->
+
+    <!-- ic_omr_currency.xml, viewport 55 x 27: the Omani Rial symbol the POS draws on its customer display. -->
+    <Geometry x:Key="OmrGeometry">F1 M17.627,15.622C17.579,11.823 18.511,8.255 20.389,4.986C23.171,0.142 26.225,-1.384 31.516,1.346C32.34,1.77 35.655,4.081 35.98,4.785C36.368,5.624 33.858,12.805 33.732,14.228C31.054,11.332 26.06,6.61 21.776,8.852C18.298,10.673 20.848,13.681 22.661,15.622H54.268L52.229,19.301H26.556C26.532,19.44 26.623,19.555 26.751,19.656C27.712,20.406 33.003,22.709 34.067,22.709H50.336L48.26,26.487H0L2.078,22.709H21.642L18.776,19.301H3.967L6.006,15.623H17.627V15.622Z</Geometry>
+
+    <!-- ic_result_approved.xml, viewport 24 x 24. -->
+    <Geometry x:Key="CheckCircleGeometry">F1 M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z</Geometry>
+
+    <!-- ic_result_declined.xml, viewport 24 x 24. -->
+    <Geometry x:Key="CancelCircleGeometry">F1 M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM17,15.59L15.59,17 12,13.41 8.41,17 7,15.59 10.59,12 7,8.41 8.41,7 12,10.59 15.59,7 17,8.41 13.41,12 17,15.59z</Geometry>
+
+</ResourceDictionary>

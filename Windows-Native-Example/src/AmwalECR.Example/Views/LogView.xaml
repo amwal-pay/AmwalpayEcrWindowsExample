@@ -1,0 +1,60 @@
+<UserControl x:Class="AmwalECR.Example.Views.LogView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        DataContext: LogViewModel. The SDK's diagnostics, last 500 lines - this
+        sample's Logcat, and how a tester sees the wire traffic. Collapsed by default.
+    -->
+    <Border Background="{StaticResource SurfaceVariantBrush}"
+            BorderBrush="{StaticResource OutlineVariantBrush}"
+            BorderThickness="0,1,0,0">
+        <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
+                  Header="{Binding Summary}"
+                  Padding="12,4"
+                  Margin="12,4,12,4">
+            <Grid Margin="0,4,0,8">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="200" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0"
+                           Style="{StaticResource CaptionText}"
+                           Margin="0,0,0,6"
+                           Text="Requests and responses, including the masked card number: treat what you copy from here as transaction records." />
+
+                <TextBox x:Name="LogBox"
+                         Grid.Row="1"
+                         Style="{StaticResource FieldTextBox}"
+                         IsReadOnly="True"
+                         AcceptsReturn="True"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         TextWrapping="NoWrap"
+                         VerticalContentAlignment="Top"
+                         HorizontalScrollBarVisibility="Auto"
+                         VerticalScrollBarVisibility="Auto"
+                         Text="{Binding Text, Mode=OneWay}"
+                         TextChanged="OnLogChanged"
+                         AutomationProperties.Name="Debug output" />
+
+                <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,8,0,0">
+                    <Button Style="{StaticResource OutlinedButton}"
+                            Content="Copy _log"
+                            Command="{Binding CopyCommand}"
+                            MinHeight="32" />
+                    <Button Style="{StaticResource TextButton}"
+                            Content="Clear"
+                            Command="{Binding ClearCommand}"
+                            Margin="8,0,0,0" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               VerticalAlignment="Center"
+                               Margin="12,0,0,0"
+                               Text="{Binding Status}"
+                               AutomationProperties.LiveSetting="Polite" />
+                </StackPanel>
+            </Grid>
+        </Expander>
+    </Border>
+</UserControl>

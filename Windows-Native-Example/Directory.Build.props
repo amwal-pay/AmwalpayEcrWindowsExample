@@ -1,0 +1,47 @@
+<Project InitialTargets="EcrSdkProjectExists">
+
+  <!--
+    Where the sample gets the ECR SDK — the counterpart of `ecrSdkDependency` in
+    the Kotlin sample's gradle.properties.
+
+      project (default)  ProjectReference to ..\..\AmwalECR-Windows\src\AmwalPay.Ecr
+      nuget              PackageReference AmwalPay.Ecr $(EcrSdkVersion)
+
+    Pick one on the command line so nothing in the tree has to be edited:
+
+      dotnet build -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
+
+    Only AmwalECR.Example.Core references the SDK; the WPF app and the tests
+    receive it transitively, so there is exactly one place this is decided.
+  -->
+  <PropertyGroup>
+    <EcrSdkDependency Condition="'$(EcrSdkDependency)' == ''">project</EcrSdkDependency>
+    <EcrSdkVersion Condition="'$(EcrSdkVersion)' == ''">1.0.0</EcrSdkVersion>
+    <EcrSdkProjectPath Condition="'$(EcrSdkProjectPath)' == ''">$(MSBuildThisFileDirectory)..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj</EcrSdkProjectPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <!-- Lets `dotnet build` compile the WPF app on macOS / Linux. Harmless on Windows. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+
+  <!--
+    The examples and the SDK are separate repositories. `project` mode expects the SDK
+    checked out NEXT TO this repository's folder, i.e. this layout:
+
+      <workspace>/AmwalECR-Windows/                       github.com/amwal-pay/AmwalpayEcrWindows
+      <workspace>/AmwalECR-Windows-Example/Windows-Native-Example/   (this project)
+
+    Without it, restore fails with an opaque "project file not found"; say what to do instead.
+  -->
+  <Target Name="EcrSdkProjectExists" Condition="'$(EcrSdkDependency)' == 'project' And !Exists('$(EcrSdkProjectPath)')">
+    <Error Text="EcrSdkDependency=project needs the SDK source at '$(EcrSdkProjectPath)'. Clone https://github.com/amwal-pay/AmwalpayEcrWindows next to the AmwalECR-Windows-Example folder (as AmwalECR-Windows), point -p:EcrSdkProjectPath=... at it, or build against the published package with -p:EcrSdkDependency=nuget." />
+  </Target>
+
+</Project>

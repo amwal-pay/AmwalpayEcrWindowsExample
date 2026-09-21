@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Amwal ECR Example</title>
+  <!-- data: URI so the browser does not ask the server for /favicon.ico. -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230B5FFF'/%3E%3Cpath d='M7 12.5l3.2 3.2L17 8.8' fill='none' stroke='white' stroke-width='2.4'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="appbar">
+    <h1>Amwal ECR Example</h1>
+    <nav aria-label="Sections">
+      <a href="#transaction" data-route="transaction">Transaction</a>
+      <a href="#terminals" data-route="terminals">Terminals</a>
+      <a href="#settings" data-route="settings">Settings</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <p id="fatal" class="banner error" role="alert" hidden></p>
+
+    <!-- Transaction ---------------------------------------------------------------- -->
+    <section id="view-transaction" class="view" aria-labelledby="h-transaction" hidden>
+      <h2 id="h-transaction" class="sr-only" tabindex="-1">Transaction</h2>
+
+      <form id="txn-form" novalidate>
+        <fieldset id="txn-fields" class="plain">
+          <legend class="sr-only">Transaction details</legend>
+
+          <div class="field" data-field="type">
+            <label for="f-type">Transaction type</label>
+            <select id="f-type"></select>
+            <p class="error" id="e-type" hidden></p>
+          </div>
+
+          <div class="field" data-field="amount">
+            <label for="f-amount">Amount (OMR)</label>
+            <input id="f-amount" class="amount" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="0.000" aria-describedby="e-amount h-amount">
+            <p class="error" id="e-amount" hidden></p>
+            <p class="caption" id="h-amount" hidden></p>
+          </div>
+
+          <div class="field" data-field="merchantReference">
+            <label for="f-merchantReference">Merchant reference</label>
+            <input id="f-merchantReference" type="text" maxlength="32" autocomplete="off" spellcheck="false" aria-describedby="e-merchantReference h-merchantReference">
+            <p class="error" id="e-merchantReference" hidden></p>
+            <p class="caption" id="h-merchantReference">Optional. Your order or basket id; leave blank to auto-generate</p>
+          </div>
+
+          <div class="field" data-field="referenceSwitch">
+            <label class="check"><input id="f-lookUpByReference" type="checkbox" aria-describedby="h-referenceLookup"> Look up by reference</label>
+            <p class="caption indent" id="h-referenceLookup" hidden>Over Web Service a lookup by reference is best-effort: the Web Service finds transactions by receipt number and date.</p>
+          </div>
+
+          <div class="field" data-field="originalReference">
+            <label for="f-originalReference">Merchant reference</label>
+            <input id="f-originalReference" type="text" maxlength="32" autocomplete="off" spellcheck="false" aria-describedby="e-originalReference h-originalReference">
+            <p class="error" id="e-originalReference" hidden></p>
+            <p class="caption" id="h-originalReference">The reference the transaction was sent with</p>
+          </div>
+
+          <div class="field" data-field="receiptNumber">
+            <label for="f-receiptNumber">Receipt number</label>
+            <input id="f-receiptNumber" type="text" inputmode="numeric" maxlength="6" autocomplete="off" aria-describedby="e-receiptNumber h-receiptNumber">
+            <p class="error" id="e-receiptNumber" hidden></p>
+            <p class="caption" id="h-receiptNumber">Receipt number printed on the receipt</p>
+          </div>
+
+          <div class="field" data-field="originalDate">
+            <label for="f-originalDate">Original transaction date</label>
+            <input id="f-originalDate" type="date" aria-describedby="h-originalDate">
+            <p class="caption" id="h-originalDate">The day the original transaction was taken</p>
+          </div>
+
+          <div class="field" data-field="otherTerminalSwitch">
+            <label class="check"><input id="f-useOtherTerminal" type="checkbox"> Different terminal</label>
+          </div>
+
+          <div class="field" data-field="originalTerminal">
+            <label for="f-originalTerminalId">Original terminal ID</label>
+            <input id="f-originalTerminalId" type="text" inputmode="numeric" autocomplete="off" aria-describedby="e-originalTerminalId h-originalTerminalId">
+            <p class="error" id="e-originalTerminalId" hidden></p>
+            <p class="caption" id="h-originalTerminalId">The terminal the original transaction was taken on</p>
+          </div>
+
+          <p id="no-terminals" class="body" hidden>No terminals registered yet. <a href="#terminals">Add one from the Terminals screen.</a></p>
+
+          <div id="terminal-picker" class="field" hidden>
+            <label for="f-terminal">POS terminal</label>
+            <select id="f-terminal" aria-describedby="e-terminal"></select>
+            <p class="error" id="e-terminal" hidden></p>
+
+            <!-- What the SDK plan makes of the selected terminal, before anyone pays. -->
+            <section id="config-card" class="card config" aria-labelledby="cfg-title">
+              <h3 id="cfg-title">Active terminal config</h3>
+              <dl class="kv">
+                <div><dt>ECR mode:</dt> <dd id="cfg-mode"></dd></div>
+                <div><dt>Transport:</dt> <dd id="cfg-transport"></dd></div>
+                <div><dt>Connection:</dt> <dd id="cfg-connection"></dd></div>
+                <div><dt id="cfg-key-label"></dt> <dd id="cfg-key-status"></dd></div>
+              </dl>
+              <ul id="cfg-issues" class="issues" hidden></ul>
+            </section>
+          </div>
+
+          <p id="form-message" class="error block" role="alert" hidden></p>
+
+          <button id="btn-start" type="submit" class="primary" aria-describedby="config-card">Start transaction</button>
+        </fieldset>
+      </form>
+
+      <!-- While running. Cancel stops waiting; it cannot un-send a request, and if the request
+           already reached the terminal the sale can still complete, so it never claims otherwise. -->
+      <div id="busy" class="busy" hidden>
+        <progress aria-label="Transaction in progress"></progress>
+        <p id="busy-status" class="body" tabindex="-1" role="status"></p>
+        <button id="btn-cancel" type="button" class="outlined">Cancel</button>
+        <p id="busy-note" class="caption" hidden>Cancel only stops waiting here. If the request has already reached the terminal, the transaction may still complete on it.</p>
+      </div>
+      <p id="link-lost" class="banner error" role="status" hidden>The connection to the app was lost. Still trying; the transaction carries on regardless.</p>
+    </section>
+
+    <!-- Terminals -------------------------------------------------------------------- -->
+    <section id="view-terminals" class="view" aria-labelledby="h-terminals" hidden>
+      <div class="row spread">
+        <h2 id="h-terminals" tabindex="-1">Registered terminals</h2>
+        <button id="btn-add-terminal" type="button" class="primary compact">Add terminal</button>
+      </div>
+      <p id="terminals-notice" class="banner error" role="status" hidden></p>
+      <p id="terminals-empty" class="body center" hidden>No terminals yet.<br>Click “Add terminal” to register a POS terminal.</p>
+      <ul id="terminal-list" class="cards"></ul>
+    </section>
+
+    <!-- Settings --------------------------------------------------------------------- -->
+    <section id="view-settings" class="view" aria-labelledby="h-settings" hidden>
+      <h2 id="h-settings" class="sr-only" tabindex="-1">Settings</h2>
+      <p id="settings-notice" class="banner error" role="status" hidden></p>
+
+      <section class="card" aria-labelledby="h-lan">
+        <h3 id="h-lan">Wi‑Fi / LAN settings</h3>
+        <p class="caption">Signing key for Wi‑Fi, USB cable, and Bluetooth ECR (sorted key=value HMAC).</p>
+        <div class="keybox" id="key-wifi"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-web">
+        <h3 id="h-web">Web Service settings</h3>
+        <p class="caption">Target environment and signing key for Web Service ECR (JSON body HMAC).</p>
+        <fieldset class="plain radios" id="env-group">
+          <legend>Environment</legend>
+        </fieldset>
+        <div class="keybox" id="key-webService"></div>
+      </section>
+
+      <p class="caption">Keys are stored encrypted with ASP.NET Core Data Protection. Unlike the Windows sample there is no Show button: the server never sends a stored key back to the browser, so a key can be replaced or cleared but not read.</p>
+    </section>
+  </main>
+
+  <!-- Debug output: the SDK's diagnostics, last 500 lines. -->
+  <aside class="logbar" aria-label="Debug output">
+    <details id="log-panel">
+      <summary id="log-summary">Debug output</summary>
+      <p class="caption">Requests and responses, including the masked card number: treat what you copy from here as transaction records.</p>
+      <label for="log-text" class="sr-only">Debug output</label>
+      <textarea id="log-text" readonly rows="10" wrap="off" spellcheck="false"></textarea>
+      <div class="row">
+        <button id="log-copy" type="button" class="outlined compact">Copy log</button>
+        <button id="log-clear" type="button" class="text compact">Clear</button>
+        <span id="log-status" class="caption" role="status"></span>
+      </div>
+    </details>
+  </aside>
+
+  <div id="announcer" class="sr-only" role="status" aria-live="polite"></div>
+
+  <!-- Result dialog: how a transaction ended. -->
+  <dialog id="dlg-result" class="modal" aria-labelledby="r-headline">
+    <div class="modal-body">
+      <svg id="r-icon-approved" class="r-icon approved" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM10,17l-5,-5 1.41,-1.41L10,14.17l7.59,-7.59L19,8l-9,9z"/></svg>
+      <svg id="r-icon-declined" class="r-icon declined" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM17,15.59L15.59,17 12,13.41 8.41,17 7,15.59 10.59,12 7,8.41 8.41,7 12,10.59 15.59,7 17,8.41 13.41,12 17,15.59z"/></svg>
+      <h2 id="r-headline" class="headline"></h2>
+      <p id="r-amount" class="amount-line" hidden>
+        <svg class="omr" viewBox="0 0 55 27" role="img" aria-label="Omani Rial"><path d="M17.627,15.622C17.579,11.823 18.511,8.255 20.389,4.986C23.171,0.142 26.225,-1.384 31.516,1.346C32.34,1.77 35.655,4.081 35.98,4.785C36.368,5.624 33.858,12.805 33.732,14.228C31.054,11.332 26.06,6.61 21.776,8.852C18.298,10.673 20.848,13.681 22.661,15.622H54.268L52.229,19.301H26.556C26.532,19.44 26.623,19.555 26.751,19.656C27.712,20.406 33.003,22.709 34.067,22.709H50.336L48.26,26.487H0L2.078,22.709H21.642L18.776,19.301H3.967L6.006,15.623H17.627V15.622Z"/></svg>
+        <span id="r-amount-text"></span>
+      </p>
+      <p id="r-message" class="body center" hidden></p>
+      <p id="r-note" class="caption center" hidden></p>
+      <dl id="r-fields" class="fields" hidden></dl>
+      <ul id="r-hints" class="hints" hidden></ul>
+
+      <!-- Unknown outcome: the only action offered is a look-up by reference. There is no retry. -->
+      <div id="r-unknown" class="unknown" hidden>
+        <p id="r-warning" class="strong"></p>
+        <button id="r-inquire" type="button" class="outlined">Inquire by reference</button>
+        <div class="row spread">
+          <code id="r-ref"></code>
+          <button id="r-copy-ref" type="button" class="text compact" aria-label="Copy reference">Copy</button>
+        </div>
+      </div>
+
+      <!-- E-receipt: a button until it is asked for, then the QR itself. -->
+      <div id="r-receipt" class="center" hidden>
+        <button id="r-receipt-btn" type="button" class="outlined" hidden>QR receipt</button>
+        <p id="r-receipt-fetching" class="body" role="status" hidden><progress aria-hidden="true"></progress> Fetching the receipt…</p>
+        <div id="r-qr" hidden>
+          <p class="body">Scan for the receipt</p>
+          <img id="r-qr-img" class="qr" width="200" height="200" alt="Receipt QR code">
+          <input id="r-qr-url" class="mono small" type="text" readonly aria-label="Receipt link">
+        </div>
+        <p id="r-receipt-problem" class="error" hidden></p>
+        <p id="r-receipt-note" class="caption" hidden></p>
+      </div>
+
+      <details id="r-raw" hidden>
+        <summary id="r-raw-summary">Show raw response</summary>
+        <pre id="r-raw-text" tabindex="0" aria-label="Raw response"></pre>
+        <button id="r-copy-raw" type="button" class="text compact">Copy raw JSON</button>
+      </details>
+      <p id="r-copy-status" class="caption" role="status"></p>
+    </div>
+    <div class="modal-actions">
+      <button id="r-close" type="button" class="primary" autofocus>Close</button>
+    </div>
+  </dialog>
+
+  <!-- Add / edit terminal. -->
+  <dialog id="dlg-terminal" class="modal" aria-labelledby="t-title">
+    <form id="terminal-form" novalidate>
+      <div class="modal-body">
+        <h2 id="t-title" class="title"></h2>
+
+        <div class="field">
+          <label for="t-name">Terminal name</label>
+          <input id="t-name" type="text" autocomplete="off" aria-describedby="e-t-name">
+          <p class="error" id="e-t-name" hidden></p>
+        </div>
+        <div class="field">
+          <label for="t-serial">Serial number</label>
+          <input id="t-serial" type="text" autocomplete="off" spellcheck="false" aria-describedby="e-t-serial">
+          <p class="error" id="e-t-serial" hidden></p>
+        </div>
+
+        <fieldset class="plain radios" id="t-modes">
+          <legend>ECR mode</legend>
+        </fieldset>
+        <p class="error" id="e-t-mode" hidden></p>
+
+        <div id="t-wifi" hidden>
+          <div class="field">
+            <label for="t-ip">IP address</label>
+            <input id="t-ip" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="e-t-ip h-t-ip">
+            <p class="error" id="e-t-ip" hidden></p>
+            <p class="caption" id="h-t-ip">Use the IP shown on the POS terminal under the card logos. Default port is 9100. On the same PC (fake_pos_server), try 127.0.0.1.</p>
+          </div>
+          <div class="field">
+            <label for="t-port">Port</label>
+            <input id="t-port" type="text" inputmode="numeric" autocomplete="off" aria-describedby="e-t-port h-t-port">
+            <p class="error" id="e-t-port" hidden></p>
+            <p class="caption" id="h-t-port">Optional. Blank means 9100.</p>
+          </div>
+        </div>
+
+        <div id="t-web" hidden>
+          <div class="field">
+            <label for="t-merchantId">Merchant ID</label>
+            <input id="t-merchantId" type="text" inputmode="numeric" autocomplete="off" aria-describedby="e-t-merchantId">
+            <p class="error" id="e-t-merchantId" hidden></p>
+          </div>
+          <div class="field">
+            <label for="t-terminalId">Terminal ID</label>
+            <input id="t-terminalId" type="text" inputmode="numeric" autocomplete="off" aria-describedby="e-t-terminalId">
+            <p class="error" id="e-t-terminalId" hidden></p>
+          </div>
+        </div>
+
+        <p id="t-note" class="caption" hidden></p>
+      </div>
+      <div class="modal-actions">
+        <button id="t-cancel" type="button" class="outlined">Cancel</button>
+        <button id="t-save" type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Confirm. Default focus is the safe choice, like the WPF message box. -->
+  <dialog id="dlg-confirm" class="modal narrow" aria-labelledby="c-title" aria-describedby="c-message">
+    <div class="modal-body">
+      <h2 id="c-title" class="title"></h2>
+      <p id="c-message" class="body"></p>
+    </div>
+    <div class="modal-actions">
+      <button id="c-no" type="button" class="outlined" autofocus>Cancel</button>
+      <button id="c-yes" type="button" class="danger"></button>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -1,0 +1,68 @@
+workflows:
+  samples-build-and-test:
+    name: Build and test both samples, publish the Windows executables
+    # The samples live in their own repository; the SDK is a sibling repository. `project`
+    # mode (the default) builds the samples against the SDK source, so the workflow clones
+    # it next to this checkout - the same layout as a developer machine:
+    #
+    #   <build dir>\AmwalECR-Windows        <- cloned here, github.com/amwal-pay/AmwalpayEcrWindows
+    #   <build dir>\<this repo>\Windows-Native-Example
+    #
+    # Needs, in environment group `A`: GITHUB_ACCES_TOKEN (same variable, same spelling, as the
+    # SDK repo's version script) if the SDK repository is private.
+    #
+    # Starts from a manual build or an `app-*` tag (e.g. `app-1`), never from a plain push.
+    instance_type: windows_x2
+    max_build_duration: 60
+    environment:
+      groups:
+        - A
+      vars:
+        SDK_REPO: https://github.com/amwal-pay/AmwalpayEcrWindows
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'app-*'
+          include: true
+    scripts:
+      - name: Fetch the SDK next to this repository
+        script: |
+          $ErrorActionPreference = "Stop"
+          $sdk = Join-Path (Split-Path -Parent $env:CM_BUILD_DIR) "AmwalECR-Windows"
+          if (Test-Path $sdk) { Remove-Item $sdk -Recurse -Force }
+          $url = $env:SDK_REPO
+          if ($env:GITHUB_ACCES_TOKEN) { $url = $url -replace '^https://', "https://oauth2:$($env:GITHUB_ACCES_TOKEN)@" }
+          git clone --depth 1 $url $sdk
+          if ($LASTEXITCODE -ne 0) { throw "could not clone the SDK repository" }
+      - name: Test the shared logic and the web sample
+        script: |
+          dotnet test Windows-Native-Example\tests\AmwalECR.Example.Tests -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          dotnet test AmwalECR-Web-Example\tests\AmwalECR.WebExample.Tests -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Check XAML bindings
+        script: |
+          # WPF only fails at runtime on a read-only two-way binding; this is the guard.
+          python Windows-Native-Example\tools\check-xaml-bindings.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Publish the WPF app (x64 and ARM64, self-contained single file)
+        script: |
+          foreach ($rid in "win-x64", "win-arm64") {
+            dotnet publish Windows-Native-Example\src\AmwalECR.Example\AmwalECR.Example.csproj -c Release -r $rid --self-contained true `
+              -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+              -p:DebugType=none -o "dist\$rid"
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+            Copy-Item Windows-Native-Example\tools -Destination "dist\$rid\tools" -Recurse -Exclude vm
+            Copy-Item Windows-Native-Example\tools\START-HERE.txt -Destination "dist\$rid\START-HERE.txt"
+            Compress-Archive -Path "dist\$rid\*" -DestinationPath "dist\AmwalECR-Example-$rid.zip" -Force
+          }
+    artifacts:
+      - dist/*.zip
+    publishing:
+      email:
+        recipients:
+          - amr.elskaan@amwal-pay.com
+        notify:
+          success: true
+          failure: true

@@ -1,0 +1,61 @@
+<Window x:Class="AmwalECR.Example.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:AmwalECR.Example.Views"
+        Title="Amwal ECR Example"
+        Width="960" Height="860"
+        MinWidth="720" MinHeight="600"
+        Background="{StaticResource BackgroundBrush}"
+        Foreground="{StaticResource OnSurfaceBrush}"
+        FontFamily="Segoe UI" FontSize="14"
+        UseLayoutRounding="True"
+        PreviewKeyDown="OnPreviewKeyDown"
+        Closing="OnClosing">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Top app bar, in brand blue like the Android sample's. -->
+        <Border Grid.Row="0" Background="{StaticResource BrandBlueBrush}" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0"
+                        Content="_Back"
+                        Style="{StaticResource HeaderButton}"
+                        Command="{Binding BackCommand}"
+                        Visibility="{Binding IsTerminalsPage, Converter={StaticResource BoolToVisibility}}"
+                        AutomationProperties.Name="Back to transaction" />
+
+                <TextBlock Grid.Column="1"
+                           Text="{Binding Title}"
+                           Foreground="{StaticResource WhiteBrush}"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Margin="8,0"
+                           AutomationProperties.HeadingLevel="Level1" />
+
+                <Button Grid.Column="2"
+                        Content="_Terminals"
+                        Style="{StaticResource HeaderButton}"
+                        Command="{Binding ShowTerminalsCommand}"
+                        Visibility="{Binding IsTransactionPage, Converter={StaticResource BoolToVisibility}}"
+                        AutomationProperties.Name="Terminals" />
+            </Grid>
+        </Border>
+
+        <ContentControl Grid.Row="1"
+                        Content="{Binding CurrentPage}"
+                        IsTabStop="False" />
+
+        <views:LogView Grid.Row="2" DataContext="{Binding Log}" />
+    </Grid>
+</Window>

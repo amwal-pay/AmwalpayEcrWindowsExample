@@ -1,0 +1,358 @@
+/*
+  Palette carried over from the WPF sample (Themes/Colors.xaml): brand blue, approved
+  green, declined red and the Material 3 light scheme they sit in. Dark values are the
+  matching Material 3 dark scheme. Nothing here is colour-only: status also has words
+  and a differently shaped icon.
+*/
+:root {
+  color-scheme: light dark;
+
+  --brand: #0B5FFF;
+  --brand-hover: #0A52DB;
+  --brand-pressed: #0844B8;
+  --on-brand: #FFFFFF;
+  --brand-text: #0B5FFF;      /* brand blue used as text on the page surface */
+  --approved: #1B8A3A;
+  --declined: #C62828;
+
+  --background: #FFFBFE;
+  --surface: #FFFBFE;
+  --surface-variant: #E7E0EC;
+  --on-surface: #1C1B1F;
+  --on-surface-variant: #49454F;
+  --outline: #79747E;
+  --outline-variant: #CAC4D0;
+  --error: #B3261E;
+  --error-container: #FBE9E7;
+  --disabled: #E6E1E5;
+  --disabled-text: #6E6A72;
+  --focus: #0B5FFF;
+  --scrim: rgb(0 0 0 / 0.45);
+
+  --radius-card: 12px;
+  --radius-field: 6px;
+  --radius-button: 8px;
+  --gutter: 16px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand-text: #9DBBFF;
+    --approved: #62D183;
+    --declined: #FF8A80;
+
+    --background: #1C1B1F;
+    --surface: #1C1B1F;
+    --surface-variant: #49454F;
+    --on-surface: #E6E1E5;
+    --on-surface-variant: #CAC4D0;
+    --outline: #938F99;
+    --outline-variant: #49454F;
+    --error: #F2B8B5;
+    --error-container: #4A1E1B;
+    --disabled: #2B292D;
+    --disabled-text: #A29DA6;
+    --focus: #9DBBFF;
+    --scrim: rgb(0 0 0 / 0.65);
+  }
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
+  color: var(--on-surface);
+  font: 400 14px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+h1, h2, h3, p, ul, dl, dd { margin: 0; }
+
+a { color: var(--brand-text); }
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip {
+  position: absolute;
+  left: var(--gutter);
+  top: -100px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--on-surface);
+  border-radius: var(--radius-button);
+  z-index: 10;
+}
+.skip:focus { top: 8px; }
+
+/* App bar ------------------------------------------------------------------------ */
+
+.appbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 8px var(--gutter);
+  background: var(--brand);
+  color: #FFFFFF;
+}
+
+.appbar h1 { font-size: 20px; font-weight: 600; margin-right: auto; }
+
+.appbar nav { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.appbar nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-radius: var(--radius-button);
+  color: #FFFFFF;
+  text-decoration: none;
+  font-weight: 500;
+}
+.appbar nav a:hover { background: rgb(255 255 255 / 0.16); }
+.appbar nav a[aria-current="page"] {
+  background: rgb(255 255 255 / 0.24);
+  box-shadow: inset 0 -3px 0 #FFFFFF;
+}
+.appbar :focus-visible { outline-color: #FFFFFF; }
+
+/* Layout ------------------------------------------------------------------------- */
+
+main { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; padding: var(--gutter); }
+
+.view > * + * { margin-top: 12px; }
+
+.row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.row.spread { justify-content: space-between; flex-wrap: nowrap; }
+
+.center { text-align: center; }
+.indent { margin-left: 24px; }
+
+h2.title, .view h2 { font-size: 16px; font-weight: 600; }
+h3 { font-size: 16px; font-weight: 600; }
+
+.body { font-size: 14px; }
+.strong { font-weight: 600; }
+
+.caption { font-size: 12px; color: var(--on-surface-variant); }
+.error { font-size: 12px; color: var(--error); }
+.error.block { font-size: 14px; font-weight: 600; margin: 8px 0; white-space: pre-line; }
+
+.mono, code { font-family: var(--mono); font-size: 12px; color: var(--on-surface-variant); word-break: break-all; }
+
+.banner {
+  padding: 12px 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface-variant);
+  white-space: pre-line;
+}
+.banner.error { background: var(--error-container); color: var(--error); font-size: 14px; }
+
+.card {
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface-variant);
+}
+.card > * + * { margin-top: 10px; }
+.card fieldset.plain { margin-top: 12px; }
+.keybox { margin-top: 14px; }
+.keybox > * + * { margin-top: 10px; }
+
+.cards { list-style: none; padding: 0; display: grid; gap: 12px; }
+.cards .card > * + * { margin-top: 2px; }
+.cards .actions { display: flex; justify-content: flex-end; gap: 4px; margin-top: 8px; }
+.mode { color: var(--brand-text); font-weight: 600; font-size: 12px; }
+
+fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.plain > * + * { margin-top: 0; }
+fieldset.radios legend { font-size: 12px; font-weight: 600; padding: 0; margin-bottom: 4px; color: var(--on-surface-variant); }
+
+/* Fields ------------------------------------------------------------------------- */
+
+.field { margin-bottom: 16px; }
+
+label, .field > label { display: block; font-size: 12px; font-weight: 600; color: var(--on-surface-variant); margin-bottom: 4px; }
+label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; color: var(--on-surface); min-height: 32px; cursor: pointer; }
+label.radio { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; font-weight: 400; color: var(--on-surface); min-height: 32px; cursor: pointer; margin: 0; }
+
+input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; margin: 0; accent-color: var(--brand); flex: none; }
+
+input[type="text"], input[type="password"], input[type="date"], select, textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-field);
+  background: var(--surface);
+  color: var(--on-surface);
+  font: inherit;
+  font-size: 16px;   /* below 16px, iOS zooms the page when a field is focused */
+}
+textarea { font-family: var(--mono); font-size: 12px; min-height: 0; resize: vertical; }
+input:disabled, select:disabled { background: var(--disabled); color: var(--disabled-text); border-color: var(--outline-variant); }
+input[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--error); border-width: 2px; padding: 7px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid var(--focus); outline-offset: 0; border-color: var(--focus); }
+
+input.amount { text-align: right; font-size: 20px; font-variant-numeric: tabular-nums; caret-color: var(--brand); }
+input.small { font-size: 11px; min-height: 32px; }
+
+.field .error, .field .caption { margin-top: 4px; padding-left: 2px; }
+
+/* Config card -------------------------------------------------------------------- */
+
+.card.config { margin-top: 12px; padding: 12px; }
+.card.config.not-ready { background: var(--error-container); }
+.card.config h3 { font-size: 14px; }
+.kv { font-size: 12px; color: var(--on-surface-variant); }
+.kv > div { margin-top: 2px; }
+.kv dt, .kv dd { display: inline; margin: 0; }
+.kv dt { font-weight: 400; }
+.issues { list-style: none; padding: 0; font-size: 12px; font-weight: 600; color: var(--error); }
+.issues li { margin-top: 2px; }
+.issues li::before { content: "Problem: "; }
+
+/* Buttons ------------------------------------------------------------------------ */
+
+button {
+  font: inherit;
+  font-weight: 500;
+  min-height: 44px;
+  padding: 8px 16px;
+  border-radius: var(--radius-button);
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  color: var(--brand-text);
+}
+button.compact { min-height: 40px; padding: 6px 16px; }
+
+button.primary { background: var(--brand); color: var(--on-brand); min-height: 48px; padding: 8px 24px; width: 100%; }
+button.primary.compact { width: auto; min-height: 44px; }
+button.primary:hover:not(:disabled) { background: var(--brand-hover); }
+button.primary:active:not(:disabled) { background: var(--brand-pressed); }
+
+button.outlined { border-color: var(--outline); color: var(--brand-text); }
+button.outlined:hover:not(:disabled), button.text:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 10%, transparent); }
+
+button.danger { color: var(--error); font-weight: 600; }
+button.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--error) 12%, transparent); }
+.actions button.danger, .modal-actions button.danger { border-color: var(--error); }
+
+button:disabled { background: var(--disabled); color: var(--disabled-text); border-color: transparent; cursor: not-allowed; }
+
+/* Busy panel --------------------------------------------------------------------- */
+
+.busy { margin-top: 16px; }
+.busy > * + * { margin-top: 12px; }
+progress { width: 100%; height: 6px; accent-color: var(--brand); }
+.busy button { min-width: 120px; }
+
+/* Modals ------------------------------------------------------------------------- */
+
+dialog.modal {
+  width: min(500px, calc(100vw - 2 * var(--gutter)));
+  max-height: min(780px, calc(100dvh - 2 * var(--gutter)));
+  padding: 0;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-card);
+  background: var(--background);
+  color: var(--on-surface);
+  overflow: hidden;
+}
+dialog.modal[open] { display: flex; flex-direction: column; }
+dialog.modal.narrow { width: min(420px, calc(100vw - 2 * var(--gutter))); }
+dialog.modal::backdrop { background: var(--scrim); }
+dialog.modal form { display: flex; flex-direction: column; min-height: 0; max-height: inherit; }
+
+.modal-body { padding: 24px 24px 8px; overflow-y: auto; min-height: 0; }
+.modal-body > * + * { margin-top: 12px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 24px 24px; }
+.modal-actions button.primary { width: auto; min-width: 96px; min-height: 44px; }
+
+.r-icon { display: block; width: 64px; height: 64px; margin: 0 auto; }
+.r-icon.approved { fill: var(--approved); }
+.r-icon.declined { fill: var(--declined); }
+
+.headline { font-size: 22px; font-weight: 600; text-align: center; }
+.headline.approved { color: var(--approved); }
+.headline.declined { color: var(--declined); }
+
+.amount-line { display: flex; justify-content: center; align-items: center; gap: 8px; font-size: 22px; font-weight: 600; }
+.omr { height: 18px; width: auto; fill: var(--on-surface); }
+
+.fields { margin-top: 16px; }
+.fields > div { display: flex; justify-content: space-between; gap: 16px; padding: 3px 0; }
+.fields dt { font-size: 12px; color: var(--on-surface-variant); align-self: center; }
+.fields dd { text-align: right; word-break: break-word; }
+
+.hints { list-style: none; padding: 0; font-size: 12px; color: var(--on-surface-variant); }
+.hints li::before { content: "\2022  "; }
+
+.unknown { margin-top: 16px; }
+.unknown > * + * { margin-top: 12px; }
+
+.qr { display: block; margin: 8px auto 0; background: #FFFFFF; border: 1px solid var(--outline-variant); padding: 4px; image-rendering: pixelated; }
+#r-qr-url { display: block; margin: 8px auto 0; width: min(216px, 100%); }
+#r-receipt > * + * { margin-top: 8px; }
+#r-receipt-fetching progress { width: 80px; vertical-align: middle; margin-right: 8px; }
+
+details summary { cursor: pointer; padding: 8px 0; min-height: 44px; display: flex; align-items: center; font-weight: 500; }
+details pre {
+  margin: 8px 0 0;
+  padding: 8px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--outline);
+  border-radius: var(--radius-field);
+  font: 12px/1.4 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Debug output ------------------------------------------------------------------- */
+
+.logbar {
+  background: var(--surface-variant);
+  border-top: 1px solid var(--outline-variant);
+  padding: 0 var(--gutter) 4px;
+}
+.logbar details { max-width: 960px; margin: 0 auto; }
+.logbar details > * + * { margin-top: 6px; }
+.logbar textarea { height: 200px; }
+.logbar .row { padding-bottom: 8px; }
+
+/* Small screens ------------------------------------------------------------------ */
+
+@media (max-width: 480px) {
+  .modal-body { padding: 16px 16px 8px; }
+  .modal-actions { padding: 8px 16px 16px; }
+  .modal-actions button { flex: 1; }
+  .appbar h1 { flex-basis: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

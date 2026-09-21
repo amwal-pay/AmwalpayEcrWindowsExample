@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>AmwalECR.Example</RootNamespace>
+    <AssemblyName>AmwalECR.Example</AssemblyName>
+    <ApplicationTitle>Amwal ECR Example</ApplicationTitle>
+    <Product>Amwal ECR Example</Product>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- XAML mistakes are the one thing this project cannot be run to find on a Mac. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AmwalECR.Example.Core\AmwalECR.Example.Core.csproj" />
+  </ItemGroup>
+
+</Project>

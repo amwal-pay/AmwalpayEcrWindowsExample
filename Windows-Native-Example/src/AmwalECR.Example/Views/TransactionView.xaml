@@ -1,0 +1,210 @@
+<UserControl x:Class="AmwalECR.Example.Views.TransactionView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:AmwalECR.Example.Ui.Behaviors"
+             xmlns:views="clr-namespace:AmwalECR.Example.Views">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+        <StackPanel MaxWidth="640" Margin="16" HorizontalAlignment="Stretch">
+
+            <!--
+                The form. Which fields exist is decided by EcrTransactionType (through
+                TransactionFormState), so a field cannot be shown and not required.
+                Disabled as a whole while a transaction runs.
+            -->
+            <StackPanel IsEnabled="{Binding IsNotBusy}">
+
+                <!-- Transaction type. Switching it resets the fields that no longer apply. -->
+                <StackPanel Margin="0,0,0,16">
+                    <Label Content="Transaction t_ype" Target="{Binding ElementName=TypeBox}" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="TypeBox"
+                              Style="{StaticResource FieldComboBox}"
+                              ItemsSource="{Binding Form.TypeOptions}"
+                              SelectedItem="{Binding Form.Type, Mode=TwoWay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource TransactionTypeName}}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
+                <!-- Amount: digits shift in from the right against three fixed decimals. Dimmed, with the reason, when the type does not take one. -->
+                <StackPanel Margin="0,0,0,16">
+                    <Label Content="_Amount (OMR)" Target="{Binding ElementName=AmountBox}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="AmountBox"
+                             Style="{StaticResource FieldTextBox}"
+                             ui:AmountInput.Active="True"
+                             ui:AmountInput.Digits="{Binding Form.AmountDigits, Mode=TwoWay}"
+                             ui:FieldState.HasError="{Binding Form.HasAmountError}"
+                             IsEnabled="{Binding Form.RequiresAmount}"
+                             HorizontalContentAlignment="Right"
+                             TextAlignment="Right"
+                             FontSize="20"
+                             AutomationProperties.HelpText="{Binding Form.AmountHelp}" />
+                    <TextBlock Style="{StaticResource ErrorText}"
+                               Text="{Binding Form.AmountError}"
+                               Visibility="{Binding Form.HasAmountError, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="{Binding Form.AmountHelp}"
+                               Visibility="{Binding Form.HasAmountHelp, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+
+                <!-- Sale: optional merchant reference. -->
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.ShowMerchantReference, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="Merchant _reference" Target="{Binding ElementName=MerchantReferenceBox}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="MerchantReferenceBox"
+                             Style="{StaticResource FieldTextBox}"
+                             MaxLength="32"
+                             Text="{Binding Form.MerchantReference, UpdateSourceTrigger=PropertyChanged}"
+                             ui:FieldState.HasError="{Binding Form.HasMerchantReferenceError}"
+                             AutomationProperties.HelpText="Optional. Your order or basket id; leave blank to auto-generate" />
+                    <TextBlock Style="{StaticResource ErrorText}"
+                               Text="{Binding Form.MerchantReferenceError}"
+                               Visibility="{Binding Form.HasMerchantReferenceError, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="Optional. Your order or basket id; leave blank to auto-generate" />
+                </StackPanel>
+
+                <!--
+                    Inquiry: name the transaction by receipt number, or by the reference
+                    the till sent it with. The reference is the one that still works after
+                    an answer that never arrived, since the receipt number was in that answer.
+                -->
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.ShowReferenceSwitch, Converter={StaticResource BoolToVisibility}}">
+                    <CheckBox Content="Look up by re_ference"
+                              IsChecked="{Binding Form.LookUpByReference, Mode=TwoWay}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="22,4,0,0"
+                               Text="{Binding ReferenceLookupHint}"
+                               Visibility="{Binding IsWebServiceSelected, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.LooksUpByReference, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="Merchant refer_ence" Target="{Binding ElementName=OriginalReferenceBox}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="OriginalReferenceBox"
+                             Style="{StaticResource FieldTextBox}"
+                             MaxLength="32"
+                             Text="{Binding Form.OriginalReference, UpdateSourceTrigger=PropertyChanged}"
+                             ui:FieldState.HasError="{Binding Form.HasOriginalReferenceError}"
+                             AutomationProperties.HelpText="The reference the transaction was sent with" />
+                    <TextBlock Style="{StaticResource ErrorText}"
+                               Text="{Binding Form.OriginalReferenceError}"
+                               Visibility="{Binding Form.HasOriginalReferenceError, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="The reference the transaction was sent with" />
+                </StackPanel>
+
+                <!-- Void, refund, inquiry: the receipt number of the original. -->
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.ShowReceiptNumber, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="Recei_pt number" Target="{Binding ElementName=ReceiptNumberBox}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="ReceiptNumberBox"
+                             Style="{StaticResource FieldTextBox}"
+                             MaxLength="6"
+                             ui:TextFilter.Mode="Digits"
+                             Text="{Binding Form.ReceiptNumber, UpdateSourceTrigger=PropertyChanged}"
+                             ui:FieldState.HasError="{Binding Form.HasReceiptNumberError}"
+                             AutomationProperties.HelpText="Receipt number printed on the receipt" />
+                    <TextBlock Style="{StaticResource ErrorText}"
+                               Text="{Binding Form.ReceiptNumberError}"
+                               Visibility="{Binding Form.HasReceiptNumberError, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="Receipt number printed on the receipt" />
+                </StackPanel>
+
+                <!-- Refund, inquiry by receipt number: the day the original was taken. It cannot be in the future. -->
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.ShowOriginalDate, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="Original transaction _date" Target="{Binding ElementName=OriginalDateBox}" Style="{StaticResource FieldLabel}" />
+                    <DatePicker x:Name="OriginalDateBox"
+                                Style="{StaticResource FieldDatePicker}"
+                                DisplayDateEnd="{Binding Form.LatestDate, Mode=OneWay}"
+                                SelectedDate="{Binding Form.OriginalDate, Mode=TwoWay}"
+                                AutomationProperties.HelpText="The day the original transaction was taken" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="The day the original transaction was taken" />
+                </StackPanel>
+
+                <!-- The original may have been taken on another terminal. -->
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.ShowOtherTerminalSwitch, Converter={StaticResource BoolToVisibility}}">
+                    <CheckBox Content="Different te_rminal"
+                              IsChecked="{Binding Form.UseOtherTerminal, Mode=TwoWay}" />
+                </StackPanel>
+
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding Form.ShowOriginalTerminal, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="Original terminal _ID" Target="{Binding ElementName=OriginalTerminalBox}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="OriginalTerminalBox"
+                             Style="{StaticResource FieldTextBox}"
+                             ui:TextFilter.Mode="Digits"
+                             Text="{Binding Form.OriginalTerminalId, UpdateSourceTrigger=PropertyChanged}"
+                             ui:FieldState.HasError="{Binding Form.HasOriginalTerminalIdError}"
+                             AutomationProperties.HelpText="The terminal the original transaction was taken on" />
+                    <TextBlock Style="{StaticResource ErrorText}"
+                               Text="{Binding Form.OriginalTerminalIdError}"
+                               Visibility="{Binding Form.HasOriginalTerminalIdError, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="The terminal the original transaction was taken on" />
+                </StackPanel>
+
+                <!-- Terminal: the dropdown shows "name (serial)"; the card shows what the SDK plan makes of it. -->
+                <TextBlock Style="{StaticResource BodyText}"
+                           Margin="0,0,0,16"
+                           Text="No terminals registered yet. Add one from the Terminals screen."
+                           Visibility="{Binding NoTerminals, Converter={StaticResource BoolToVisibility}}" />
+
+                <StackPanel Margin="0,0,0,16"
+                            Visibility="{Binding HasTerminals, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="P_OS terminal" Target="{Binding ElementName=TerminalBox}" Style="{StaticResource FieldLabel}" />
+                    <ComboBox x:Name="TerminalBox"
+                              Style="{StaticResource FieldComboBox}"
+                              ItemsSource="{Binding Terminals}"
+                              SelectedValuePath="SerialNumber"
+                              DisplayMemberPath="DisplayName"
+                              SelectedValue="{Binding SelectedSerial, Mode=TwoWay}" />
+                    <views:TerminalConfigCard Margin="0,12,0,0"
+                                              DataContext="{Binding SelectedConfig}"
+                                              Visibility="{Binding Converter={StaticResource NullToVisibility}}" />
+                </StackPanel>
+
+                <Button Style="{StaticResource PrimaryButton}"
+                        Content="{Binding Form.StartButtonText}"
+                        Command="{Binding SubmitCommand}"
+                        IsEnabled="{Binding CanStart}"
+                        IsDefault="True" />
+            </StackPanel>
+
+            <!--
+                While running. Cancel stops waiting; it cannot un-send a request, and
+                if the request already reached the terminal the sale can still complete
+                - so it never claims the transaction did not happen.
+            -->
+            <StackPanel Margin="0,16,0,0"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}">
+                <ProgressBar IsIndeterminate="True" Height="6" Margin="0,0,0,12" />
+                <TextBlock Style="{StaticResource BodyText}"
+                           Text="{Binding StatusText}"
+                           AutomationProperties.LiveSetting="Polite" />
+                <Button Style="{StaticResource OutlinedButton}"
+                        Content="_Cancel"
+                        Command="{Binding CancelCommand}"
+                        HorizontalAlignment="Left"
+                        Margin="0,12,0,0" />
+                <TextBlock Style="{StaticResource CaptionText}"
+                           Margin="0,8,0,0"
+                           Text="Cancel only stops waiting here. If the request has already reached the terminal, the transaction may still complete on it."
+                           Visibility="{Binding IsInProgress, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

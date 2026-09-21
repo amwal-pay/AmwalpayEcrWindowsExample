@@ -1,0 +1,21 @@
+Amwal ECR Example (Windows)
+===========================
+Double-click AmwalECR.Example.exe. Nothing to install: .NET is bundled.
+(Windows 10 1809+ / Windows 11. If SmartScreen warns, choose More info > Run anyway:
+the build is unsigned.)
+
+Try it without a real terminal
+------------------------------
+1. Install Python 3, then in this folder run:
+     python tools\fake_pos_server_signed.py --key 0123456789ABCDEF0123456789ABCDEF --port 19100
+   (flags: --decline 51, --partial, --delay 3, --drop-sale, --not-found)
+2. In the app: Terminals > Add
+     Serial: TW1234567890   Mode: Wi-Fi   IP: 127.0.0.1   Port: 19100
+3. Settings: set the Wi-Fi/LAN secure hash key to 0123456789ABCDEF0123456789ABCDEF
+4. Transaction: pick the terminal, Sale, key an amount, Pay.
+
+Real terminal: register its IP (shown on its idle screen), port 9100, and the LAN
+signing key configured on that terminal.
+
+Your data is in %APPDATA%\AmwalECR-Example (terminals.json, and settings.dat
+encrypted with your Windows account).

@@ -1,0 +1,32 @@
+<Application x:Class="AmwalECR.Example.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:AmwalECR.Example.Ui.Converters"
+             xmlns:vm="clr-namespace:AmwalECR.Example.ViewModels"
+             xmlns:views="clr-namespace:AmwalECR.Example.Views">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <conv:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <conv:StringToVisibilityConverter x:Key="StringToVisibility" />
+            <conv:StringToBooleanConverter x:Key="StringToBool" />
+            <conv:NullToVisibilityConverter x:Key="NullToVisibility" />
+            <conv:InverseBooleanConverter x:Key="InverseBool" />
+            <conv:EnumToBooleanConverter x:Key="EnumToBool" />
+            <conv:TransactionTypeNameConverter x:Key="TransactionTypeName" />
+            <conv:QrCodeConverter x:Key="QrCode" />
+
+            <!-- Page navigation: the view-model on screen picks its view. -->
+            <DataTemplate DataType="{x:Type vm:TransactionViewModel}">
+                <views:TransactionView />
+            </DataTemplate>
+            <DataTemplate DataType="{x:Type vm:TerminalsViewModel}">
+                <views:TerminalsView />
+            </DataTemplate>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
