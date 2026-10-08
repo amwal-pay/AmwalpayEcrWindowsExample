@@ -1,4 +1,3 @@
-using System.Globalization;
 using AmwalECR.Example.Core.Data;
 using AmwalECR.Example.Core.Transaction;
 using AmwalPay.Ecr;
@@ -154,10 +153,14 @@ public sealed class TransactionEngine
     {
         if (request.Type == EcrTransactionType.Inquiry)
         {
+            // Same as ECR-simulator: by-reference leaves the date blank (a
+            // reference is not day-scoped); by-STAN sends the form date. Do not
+            // invent today's date for Web Service — Hub/MMA filter by that day
+            // and a synthetic date misses older transactions.
             var inquiry = request.LooksUpByReference
                 ? await session.InquireByReferenceAsync(
                     originalReference: request.OriginalReference,
-                    transactionDate: DateForReferenceLookup(session, request),
+                    transactionDate: request.TransactionDate,
                     originalTerminalId: request.OriginalTerminalId,
                     merchantReference: request.MerchantReference,
                     cancellationToken: ct).ConfigureAwait(true)
@@ -187,16 +190,6 @@ public sealed class TransactionEngine
 
         return TransactionOutcomes.FromResult(result, request);
     }
-
-    /// <summary>
-    /// The Web Service asks for a date on every status lookup; a lookup by
-    /// reference has none typed (a reference is not scoped to a day on the LAN), so
-    /// today's is used — the case is a transaction that has just gone unanswered.
-    /// </summary>
-    private static string DateForReferenceLookup(EcrOpenedSession session, TransactionRequest request) =>
-        request.TransactionDate.Length == 0 && session.UsesWebService
-            ? DateTime.Today.ToString("yyyyMMdd", CultureInfo.InvariantCulture)
-            : request.TransactionDate;
 
     /// <summary>Fetches the e-receipt of an inquired transaction. Never throws except for cancellation.</summary>
     public async Task<EcrReceipt> FetchReceiptAsync(TransactionState.Inquired current, CancellationToken ct)

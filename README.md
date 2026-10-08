@@ -1,10 +1,15 @@
 # Amwal ECR — C# samples
 
+> Built for **`AmwalPay.Ecr` 1.0.0** (first NuGet release of the Windows/SDK package). Default
+> `project` mode builds against a sibling `AmwalECR-Windows` checkout; for the published package
+> use `-p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0`.
+
 Two runnable samples for the C# **`AmwalPay.Ecr`** SDK, which lets a till (an *ECR*) take card
 payments on an Amwal POS terminal over the shop network or the Amwal Hub. Both are a working
 register: register the terminals you own, key an amount, pick a terminal, run a sale, void, refund
-or inquiry, and read the result. They port the Kotlin **ECR simulator** (Android) — same screens,
-form rules and wording — and are meant to be read as much as run.
+or inquiry (by receipt number or merchant reference), and read the result. They port the Kotlin
+**ECR simulator** (Android) — same screens, form rules and wording — and are meant to be read as
+much as run.
 
 | | [Windows-Native-Example](Windows-Native-Example/README.md) | [AmwalECR-Web-Example](AmwalECR-Web-Example/README.md) |
 |---|---|---|
@@ -46,7 +51,8 @@ implementation; the samples differ only in the front end. So the rules are ident
 
 - the fields shown and required follow `EcrTransactionType` flags, and the error strings match;
 - an unknown outcome is never a refusal and never a reason to retry: the only follow-up is
-  **inquire by reference**;
+  **inquire by reference** (LAN and Web Service both support that lookup in SDK 1.0.0);
+- inquiry by STAN hides the date when looking up by reference (same as the Android simulator);
 - Cancel stops *waiting*, it does not cancel a payment;
 - the config card shows what the SDK plan says is missing *before* you pay.
 
@@ -155,11 +161,22 @@ also works from macOS with the .NET 10 SDK):
 ```bash
 dotnet publish src/AmwalECR.Example/AmwalECR.Example.csproj -c Release -r win-x64 \
   --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:EnableCompressionInSingleFile=true -p:DebugType=none -o dist/win-x64
+  -p:EnableCompressionInSingleFile=true -p:DebugType=none -o ../dist/win-x64
 ```
 
-Repeat with `-r win-arm64`. The output is one ~66 MB `AmwalECR.Example.exe`; a local publish lands
-in `Windows-Native-Example/dist/` (zips per runtime: `AmwalECR-Example-win-x64.zip` and
-`...-win-arm64.zip`, which also carry `tools/fake_pos_server_signed.py`). [`codemagic.yaml`](codemagic.yaml)
-does the same in CI on an `app-*` tag and writes to `<repo>/dist/`. The executables are **unsigned**,
-so Windows SmartScreen warns on first run: *More info*, then *Run anyway*.
+Repeat with `-r win-arm64`. Zip each folder with `tools/fake_pos_server_signed.py` and
+`START-HERE.txt` (as [`codemagic.yaml`](codemagic.yaml) does on an `app-*` tag). Local output is
+usually `<repo>/dist/AmwalECR-Example-win-x64.zip` and `...-win-arm64.zip`.
+
+### What to share for testing
+
+| Artifact | Audience |
+|---|---|
+| `dist/AmwalECR-Example-win-x64.zip` | Most Windows PCs (Intel/AMD) — unzip, run `AmwalECR.Example.exe`, read `START-HERE.txt` |
+| `dist/AmwalECR-Example-win-arm64.zip` | Windows on ARM |
+| Web: publish `AmwalECR.WebExample` and zip the output | Testers with .NET 8 who prefer the browser UI (`dotnet AmwalECR.WebExample.dll --urls http://127.0.0.1:5080`) |
+
+The WPF builds are **unsigned**, so Windows SmartScreen may warn on first run: *More info*, then
+*Run anyway*. For LAN testing without hardware, include or point testers at
+`tools/fake_pos_server_signed.py` (Python 3). Web Service testing needs a real Hub environment,
+merchant/terminal IDs, serial, and the Web Service signing key.

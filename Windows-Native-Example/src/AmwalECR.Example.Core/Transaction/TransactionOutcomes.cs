@@ -107,11 +107,11 @@ public static class TransactionOutcomes
     /// <summary>Extra text for an inquiry dialog, or null.</summary>
     public static string? InquiryNote(EcrInquiry inquiry, TransactionRequest request, bool webService)
     {
-        if (inquiry is EcrInquiry.NotFound && webService && request.LooksUpByReference)
+        _ = request;
+        if (inquiry is EcrInquiry.NotFound && webService)
         {
-            return "The Web Service looks transactions up by receipt number and date, so a lookup by " +
-                   "reference finding nothing does not show the transaction did not happen. Check the " +
-                   "terminal's receipt or the merchant portal before taking payment again.";
+            return "The Web Service did not return this transaction. That does not prove nothing was " +
+                   "charged — check the terminal's receipt or the merchant portal before taking payment again.";
         }
         return null;
     }

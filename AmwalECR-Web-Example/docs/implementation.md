@@ -1,5 +1,9 @@
 # Implementation guide — the ASP.NET Core web sample
 
+> Aligns with **`AmwalPay.Ecr` 1.0.0** and shared `AmwalECR.Example.Core`: inquiry by STAN or
+> merchant reference on LAN and Web Service; by-reference sends a blank date (no synthetic
+> “today”).
+
 For .NET web/backend developers who want to learn how to put a POS-terminal payment flow
 behind a web application without getting it wrong, and for maintainers extending this
 sample. It explains **why** the code is shaped the way it is; the [README](../README.md) is

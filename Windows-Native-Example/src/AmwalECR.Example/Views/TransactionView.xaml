@@ -77,10 +77,6 @@
                             Visibility="{Binding Form.ShowReferenceSwitch, Converter={StaticResource BoolToVisibility}}">
                     <CheckBox Content="Look up by re_ference"
                               IsChecked="{Binding Form.LookUpByReference, Mode=TwoWay}" />
-                    <TextBlock Style="{StaticResource CaptionText}"
-                               Margin="22,4,0,0"
-                               Text="{Binding ReferenceLookupHint}"
-                               Visibility="{Binding IsWebServiceSelected, Converter={StaticResource BoolToVisibility}}" />
                 </StackPanel>
 
                 <StackPanel Margin="0,0,0,16"

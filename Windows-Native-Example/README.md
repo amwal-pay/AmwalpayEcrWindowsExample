@@ -1,5 +1,8 @@
 # Amwal ECR — Windows sample app
 
+> Targets **`AmwalPay.Ecr` 1.0.0**. Same inquiry behaviour as the Android ECR-simulator:
+> lookup by receipt number (STAN + date) or by merchant reference on both Wi‑Fi and Web Service.
+
 A working Electronic Cash Register for Windows: register the terminals you own,
 key an amount, pick a terminal, run a transaction against it. It is the Windows
 counterpart of the Android **ECR simulator**, built on the C# `AmwalPay.Ecr` SDK,
@@ -188,6 +191,11 @@ of it: **receipt number, type, card, amount, status and date/time**, plus whethe
 backend says it can still be voided or refunded. Everything else the terminal sent is under
 "Show raw response".
 
+By-reference lookup hides the date and receipt fields (a reference is not day-scoped). The
+typed date is sent only for STAN lookups — the sample does **not** invent today's date for
+Web Service by-reference inquiries (same as the Android simulator). On Web Service the SDK
+posts to `/Ecr/Inquiry` with empty `stan` and `originalMerchantReference` set.
+
 It reads and nothing more, so the terminal answers it **even mid-payment**. That is the
 point: after a transaction whose outcome is unknown, this is how the till finds out,
 instead of retrying and charging the customer twice.
@@ -219,16 +227,14 @@ rules to the letter:
   outcome with the same look-up, not as "cancelled". The app generates the sale's
   reference itself for exactly this reason: the SDK returns one on a result, and a
   cancelled call returns none.
-- On **Web Service** a network error does not arrive as `Failed`; it arrives as `Declined`
-  with `ResponseCode == "NO_RESPONSE"`. The sample treats that — and any decline whose
-  `NextStep` says to inquire — as an unknown outcome, not a refusal.
+- On **Web Service** a network error on a money-moving call does not arrive as `Failed`; it
+  arrives as `Declined` with `ResponseCode == "NO_RESPONSE"` (or another status) and
+  `NextStep == InquireByMerchantReference`. The sample treats that as an unknown outcome
+  and offers **Inquire by reference** — which Web Service supports in SDK 1.0.0.
 - Closing the window mid-transaction asks first; it does not cancel anything on the
   terminal.
 - Nothing was sent when the terminal cannot be reached (the Wi‑Fi probe runs first), so
   that message says what to check and offers no look-up.
-
-On Web Service the SDK looks transactions up by receipt number and date, so a look-up by
-reference is best-effort there, and the sample says so beside the switch and in the result.
 
 ## Testing without a terminal
 
@@ -322,11 +328,11 @@ dotnet publish src/AmwalECR.Example/AmwalECR.Example.csproj -c Release -r win-x6
   -p:EnableCompressionInSingleFile=true -p:DebugType=none -o dist/win-x64
 ```
 
-Repeat with `-r win-arm64`. Output goes to `dist/` here (git-ignored; the release zips are
-`dist/AmwalECR-Example-win-x64.zip` and `...-win-arm64.zip`, each holding the exe and
-`tools/fake_pos_server_signed.py`). The CI workflow ([`../codemagic.yaml`](../codemagic.yaml))
-publishes both on an `app-*` tag. The builds are **unsigned**: Windows SmartScreen warns on
-first run (*More info*, then *Run anyway*).
+Repeat with `-r win-arm64`. Prefer zipping under the repo `dist/` folder with
+`tools/fake_pos_server_signed.py` and `START-HERE.txt` (see the
+[umbrella README](../README.md#what-to-share-for-testing)). The CI workflow
+([`../codemagic.yaml`](../codemagic.yaml)) publishes both on an `app-*` tag. The builds are
+**unsigned**: Windows SmartScreen warns on first run (*More info*, then *Run anyway*).
 
 ## Differences from the Android sample
 
@@ -334,8 +340,11 @@ first run (*More info*, then *Run anyway*).
 - **Different terminal** switch is live. It is commented out of the Android screen, but
   the form state and SDK support it.
 - The **signing keys** live in a DPAPI-encrypted file rather than `EncryptedSharedPreferences`.
-- **Look-up by reference** is offered only after an unknown outcome *if the request went
-  out* (`Failure.OutcomeUnknown`); Android offers it after any failure.
+- **Inquiry** (STAN and by-reference, including Web Service) matches the Android simulator;
+  by-reference sends a blank date.
+- **Look-up by reference** after a money-moving failure is offered only when the request
+  may have gone out (`Failure.OutcomeUnknown`); a failed *inquiry* by reference keeps the
+  reference so the operator can try again (same idea as Android).
 - A decline whose `NextStep` asks for an inquiry, and Web Service `NO_RESPONSE`, are
   treated as unknown outcomes.
 - A **Cancel** button, the **Debug output** panel, the *Different terminal* switch and an

@@ -1,5 +1,8 @@
 # Amwal ECR — web sample
 
+> Built for **`AmwalPay.Ecr` 1.0.0**. Same Core logic as the WPF sample — including inquiry by
+> STAN or merchant reference on Wi‑Fi and Web Service.
+
 The **ASP.NET Core** front end of the Amwal ECR samples: register the POS terminals you own,
 key an amount in the browser, pick a terminal, run a transaction against it. It has the same
 screens, form rules, wording and payment-safety behaviour as the

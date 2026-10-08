@@ -237,8 +237,6 @@ export function initTransaction({ meta, onFinished }) {
       issues.replaceChildren(...config.issues.map((issue) => h('li', {}, issue)));
       show(issues, config.issues.length !== 0);
 
-      // Web Service finds transactions by receipt number and date.
-      show($('#h-referenceLookup'), config.usesWebService);
     }
     els.start.disabled = !canStart();
   }

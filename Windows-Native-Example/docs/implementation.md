@@ -1,5 +1,8 @@
 # Implementation guide — Windows (WPF) sample
 
+> Aligns with **`AmwalPay.Ecr` 1.0.0** and the Android ECR-simulator: inquiry by STAN or
+> merchant reference on LAN and Web Service; by-reference leaves the date blank.
+
 How the WPF sample is put together, why it is split the way it is, and where to change
 things. Written for two readers: a .NET developer copying the SDK integration into their
 own Windows till, and a maintainer extending this sample.
@@ -482,9 +485,9 @@ real socket without a window.
    nothing to inquire about). Cancellation here returns `Idle`.
 5. **`report(InProgress)`** — the request is about to go out.
 6. **Execute** by type: `SaleAsync`, `VoidAsync`, `RefundAsync`, or (inquiry)
-   `InquireAsync` by receipt number and date / `InquireByReferenceAsync` by reference. Web Service
-   asks for a date on every status lookup, so a by-reference lookup with no date uses today's
-   (`DateForReferenceLookup`).
+   `InquireAsync` by receipt number and date / `InquireByReferenceAsync` by reference with the
+   form's `TransactionDate` as-is (blank for by-reference — same as the Android simulator; do
+   not invent today's date for Web Service).
 7. **Classify** with `TransactionOutcomes.FromResult` / `FromInquiry`.
 8. **Catch:** cancellation → `CancelledState`; `ArgumentException` → `Failed` (nothing sent);
    anything else → `Failed("Unexpected error: ...")` carrying the reference for money-moving
@@ -649,7 +652,7 @@ optional `InquirableReference` and receipt flags. Pure, so the wording is testab
 | `Completed(Approved)` | `Approved`, or `Partially approved` | Fields: Auth code (omitted for a void: the terminal returns a placeholder), Card, Reference. Empty fields are dropped. A partial approval gets a message with both figures (`Only 50.000 of 961.100 was approved. Collect the difference by another means.`). |
 | `Completed(Declined)` | `Declined` | The message is the terminal's own words, read from the raw answer by the SDK's `EcrWireResponse.DisplayMessageFromRaw`. |
 | `Inquired(Found)` | the **transaction's** status | Not the lookup's: finding a declined sale is a successful inquiry and reads "Declined". Fields: Receipt number, Type, Card, Date/Time. Hints: `Already refunded`, `Can be voided`, `Can be refunded`. |
-| `Inquired(NotFound)` | `Not found` | With the Web Service by-reference caveat as a note. |
+| `Inquired(NotFound)` | `Not found` | On Web Service, a short note that "not found" does not prove nothing was charged. |
 | `Failed` with a reference | `Outcome unknown` | Warning text plus the reference (with Copy) and the one action. |
 | `Failed` without | `Not completed` | Message and note only. |
 

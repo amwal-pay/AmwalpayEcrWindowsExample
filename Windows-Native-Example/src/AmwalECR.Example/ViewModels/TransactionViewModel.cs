@@ -94,12 +94,6 @@ public sealed partial class TransactionViewModel : ObservableObject
         }
     }
 
-    /// <summary>Web Service finds transactions by receipt number and date; the view says so beside the by-reference switch.</summary>
-    public bool IsWebServiceSelected => SelectedConfig?.UsesWebService == true;
-
-    public string ReferenceLookupHint =>
-        "Over Web Service a lookup by reference is best-effort: the Web Service finds transactions by receipt number and date.";
-
     private void OnRepositoryChanged()
     {
         Terminals = _repository.GetAll();
@@ -126,13 +120,11 @@ public sealed partial class TransactionViewModel : ObservableObject
     {
         SelectedConfig = ResolveSelected();
         OnPropertyChanged(nameof(CanStart));
-        OnPropertyChanged(nameof(IsWebServiceSelected));
     }
 
     partial void OnSelectedConfigChanged(SelectedTerminalConfig? value)
     {
         OnPropertyChanged(nameof(CanStart));
-        OnPropertyChanged(nameof(IsWebServiceSelected));
     }
 
     /// <summary>The Start button: validate, then run.</summary>
