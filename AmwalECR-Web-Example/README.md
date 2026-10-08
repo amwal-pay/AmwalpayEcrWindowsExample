@@ -32,18 +32,16 @@ CDN, works offline.**
 | | |
 |---|---|
 | **To run** | The **.NET 8 SDK** (`dotnet --version` ≥ 8.0). Windows, Linux or macOS. |
-| **The ECR SDK** | Either a sibling checkout of the SDK repository — clone <https://github.com/amwal-pay/AmwalpayEcrWindows> as `AmwalECR-Windows` **next to this repository's folder** (default, `EcrSdkDependency=project`) — or the published NuGet package (`-p:EcrSdkDependency=nuget`, see [SDK dependency](#sdk-dependency-project--nuget)). |
+| **The ECR SDK** | Live NuGet [`AmwalPay.Ecr`](https://www.nuget.org/packages/AmwalPay.Ecr) by default (`EcrSdkDependency=nuget`). Optional sibling SDK checkout with `-p:EcrSdkDependency=project` — see [SDK dependency](#sdk-dependency-project--nuget). |
 | **Shared code** | `../Windows-Native-Example/` (this repository) — this app references its `AmwalECR.Example.Core` project. |
 | **Optional** | Python 3 (fake terminal, wiring check), Node 18+ (amount test, browser smoke test), Chrome (smoke test). |
 
-Layout the default build expects:
+Layout (NuGet default — no SDK checkout required):
 
 ```
-<workspace>/
-  AmwalECR-Windows/                  the SDK             github.com/amwal-pay/AmwalpayEcrWindows
-  AmwalECR-Windows-Example/          this repository     github.com/amwal-pay/AmwalpayEcrWindowsExample
-    Windows-Native-Example/          WPF sample + AmwalECR.Example.Core (shared)
-    AmwalECR-Web-Example/            this app
+AmwalECR-Windows-Example/          this repository
+  Windows-Native-Example/          WPF sample + AmwalECR.Example.Core (references AmwalPay.Ecr from nuget.org)
+  AmwalECR-Web-Example/            this app
 ```
 
 **Supported platforms.** The samples target **.NET 8**, which Microsoft stops supporting
@@ -257,17 +255,16 @@ in the [implementation guide](docs/implementation.md#before-you-expose-this)):
 `AmwalECR.Example.Core` (in `../Windows-Native-Example`) owns the switch, so the web app has
 none of its own; the rule lives in
 [`Windows-Native-Example/Directory.Build.props`](../Windows-Native-Example/Directory.Build.props).
-By default the SDK is the sibling checkout `<workspace>/AmwalECR-Windows/src/AmwalPay.Ecr`
-(see the layout under [Prerequisites](#prerequisites); point `-p:EcrSdkProjectPath=…` at a
-checkout elsewhere). To use the NuGet package instead:
+By default Core restores [`AmwalPay.Ecr` 1.0.0](https://www.nuget.org/packages/AmwalPay.Ecr)
+from nuget.org. No extra flags needed:
 
 ```bash
-dotnet run --project src/AmwalECR.WebExample -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
+dotnet run --project src/AmwalECR.WebExample
 ```
 
-A `-p:` global property reaches Core through the project reference, and Core rejects any
-value other than `project` or `nuget`. (Core, the WPF app and this app share Core's `obj`
-folder: after switching, restore again in the other mode.)
+For a sibling SDK checkout: `-p:EcrSdkDependency=project` (optional
+`-p:EcrSdkProjectPath=…`). Core rejects any value other than `project` or `nuget`.
+After switching modes, restore again (Core’s `obj` is shared).
 
 ## What is where
 

@@ -392,7 +392,7 @@ public class ResultPresenterTests
 
         var model = ResultPresenter.ForInquiry(state, receiptSupported: false, webService: true);
 
-        Assert.Contains("does not show the transaction did not happen", model.Note);
+        Assert.Contains("does not prove nothing was charged", model.Note);
     }
 
     [Theory]

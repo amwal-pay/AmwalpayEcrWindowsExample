@@ -1,8 +1,8 @@
 # Amwal ECR — C# samples
 
-> Built for **`AmwalPay.Ecr` 1.0.0** (first NuGet release of the Windows/SDK package). Default
-> `project` mode builds against a sibling `AmwalECR-Windows` checkout; for the published package
-> use `-p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0`.
+> Built for **[`AmwalPay.Ecr` 1.0.0](https://www.nuget.org/packages/AmwalPay.Ecr)** (live NuGet).
+> Default is `EcrSdkDependency=nuget`. For a sibling SDK checkout use
+> `-p:EcrSdkDependency=project`.
 
 Two runnable samples for the C# **`AmwalPay.Ecr`** SDK, which lets a till (an *ECR*) take card
 payments on an Amwal POS terminal over the shop network or the Amwal Hub. Both are a working
@@ -73,20 +73,14 @@ Both depend on the SDK through Core, so the `project`/`nuget` choice below appli
 
 ## Getting the SDK
 
-The SDK is a separate repository. The default mode, `EcrSdkDependency=project`, builds against a
-**sibling checkout named `AmwalECR-Windows`** next to this repository's folder:
+By default the samples restore **[`AmwalPay.Ecr`](https://www.nuget.org/packages/AmwalPay.Ecr)**
+from nuget.org (`EcrSdkDependency=nuget`, `EcrSdkVersion=1.0.0`). Prefer
+`Windows-Native-Example/AmwalECR-Example.NuGet.slnf` (or the web `.sln`) so the build does not
+require a sibling SDK checkout.
 
-```bash
-git clone https://github.com/amwal-pay/AmwalpayEcrWindows AmwalECR-Windows
-git clone https://github.com/amwal-pay/AmwalpayEcrWindowsExample AmwalECR-Windows-Example
-```
-
-Use those folder names: the SDK path is `../AmwalECR-Windows` relative to this folder, and the VM
-script expects `AmwalECR-Windows-Example`. A missing SDK stops the build with a message saying so.
-To point elsewhere: `-p:EcrSdkProjectPath=/path/to/AmwalPay.Ecr.csproj`. To use the published
-package instead: `-p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0` (any other value is rejected). In that
-mode build `Windows-Native-Example/AmwalECR-Example.NuGet.slnf`, not the `.sln`, which lists the SDK
-project and so needs the sibling checkout ([details](Windows-Native-Example/README.md#choosing-how-the-app-gets-the-sdk)).
+To develop against SDK source instead, clone it next to this repo and pass
+`-p:EcrSdkDependency=project` (optional `-p:EcrSdkProjectPath=…`). Details:
+[Windows-Native-Example README](Windows-Native-Example/README.md#choosing-how-the-app-gets-the-sdk).
 
 ## Quick start
 

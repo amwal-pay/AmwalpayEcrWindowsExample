@@ -157,31 +157,23 @@ The counterpart of `ecrSdkDependency` in the Android sample's `gradle.properties
 
 | Value | Resolves from |
 | --- | --- |
-| `project` (default) | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj`, i.e. a checkout of the SDK repo named `AmwalECR-Windows` **next to the samples repo folder** (`AmwalECR-Windows-Example`) |
-| `nuget` | `AmwalPay.Ecr` version `$(EcrSdkVersion)` (default `1.0.0`) from your NuGet sources |
+| `nuget` (default) | [`AmwalPay.Ecr`](https://www.nuget.org/packages/AmwalPay.Ecr) version `$(EcrSdkVersion)` (default `1.0.0`) from nuget.org |
+| `project` | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj` — sibling SDK checkout |
 
 ```powershell
-# the layout `project` mode expects
-git clone https://github.com/amwal-pay/AmwalpayEcrWindows AmwalECR-Windows
-git clone https://github.com/amwal-pay/AmwalpayEcrWindowsExample AmwalECR-Windows-Example
+# default — live package from nuget.org
+dotnet build AmwalECR-Example.NuGet.slnf
 
-# or use the package (no SDK checkout needed)
-dotnet build src/AmwalECR.Example -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
-```
-
-**In NuGet mode open or build `AmwalECR-Example.NuGet.slnf`, not `AmwalECR-Example.sln`.** The `.sln`
-lists the SDK project (`..\..\AmwalECR-Windows\src\AmwalPay.Ecr`) so that project mode shows the SDK
-source in the IDE; without that checkout, building it fails with "project file not found". The
-solution filter loads only this sample's three projects and works in both modes:
-
-```powershell
+# or pin explicitly
 dotnet build AmwalECR-Example.NuGet.slnf -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
+
+# SDK source next to this repo
+git clone https://github.com/amwal-pay/AmwalpayEcrWindows AmwalECR-Windows
+dotnet build AmwalECR-Example.sln -p:EcrSdkDependency=project
 ```
 
-NuGet mode was verified (Core, the tests, the WPF app and the web sample all build, the tests pass, and
-the SDK resolves as a package) from a clone of only the samples repository, against a locally packed
-`AmwalPay.Ecr`, using `-p:RestoreAdditionalProjectSources=<folder with the .nupkg>`. It has **not** been
-run against nuget.org, because the package is not published yet.
+**Prefer `AmwalECR-Example.NuGet.slnf` for NuGet builds.** The full `.sln` still lists the SDK
+project for IDE browsing in `project` mode; without that checkout, open the `.slnf` instead.
 
 Only `AmwalECR.Example.Core` references the SDK; the app and the tests receive it
 transitively (and so does the web sample). Any value other than `project` or `nuget` fails the
