@@ -8,8 +8,10 @@ things. Written for two readers: a .NET developer copying the SDK integration in
 own Windows till, and a maintainer extending this sample.
 
 Read [README.md](../README.md) first for what the app does and how to run it, and the
-[umbrella README](../../README.md) for the repository layout. The SDK itself
-(`AmwalPay.Ecr`) is documented in its own repository: `docs/integration-guide.md` and
+[umbrella README](../../README.md) for the repository layout. For **copy-paste setup and
+every operation** (Wi‑Fi vs Web Service separately), see
+[operation-examples.md](operation-examples.md). The SDK itself (`AmwalPay.Ecr`) is
+documented in its own repository: `docs/integration-guide.md` (especially §5) and
 `docs/api-reference.md` in the SDK checkout.
 
 Everything below was checked against the code at the time of writing. Section (o) lists what
@@ -32,6 +34,7 @@ was **not** checked, and the honest limits of this sample.
 - [m. Extension recipes](#m-extension-recipes)
 - [n. Building, publishing, running](#n-building-publishing-running)
 - [o. Known limitations](#o-known-limitations)
+- **[Full examples — Wi‑Fi and Web Service](operation-examples.md)** — setup + sale / void / refund / inquiry / receipt for each transport
 
 ---
 
@@ -207,14 +210,16 @@ Two files under `%APPDATA%\AmwalECR-Example\`, two classes, both registered as c
 ### `EcrExampleSettings` — [`Data/EcrExampleSettings.cs`](../src/AmwalECR.Example.Core/Data/EcrExampleSettings.cs)
 
 Holds the environment (`SIT`/`UAT`/`PROD`, default `EcrEnvironments.Default`) and **two**
-signing keys, because the SDK needs different secrets for different links:
+signing keys, because Amwal issues different secrets for different links (same model as the
+Android ECR-simulator's `EcrSimulatorSettings`). Keys are **not** fields on `Terminal`:
 
 | Setting | Used for | `SecureHashKeyFor(mode)` |
 |---|---|---|
 | `WifiSecureHashKey` | Wi-Fi (LAN); USB cable and Bluetooth would share it | `Wifi`, `UsbCable`, `Bluetooth` |
 | `WebServiceSecureHashKey` | Web Service JSON HMAC | `WebService` |
 
-The SDK does not store or choose keys; this class is where the app does.
+The SDK does not store or choose keys; this class is where the app does. The Terminals
+screen shows both settings cards above the list; Add/Edit terminal never asks for a key.
 
 - Setters **trim** the value, swap in a cloned `Values` object under a lock, write the file and
   raise `Changed` (outside the lock). `TransactionViewModel` subscribes to `Changed` so the

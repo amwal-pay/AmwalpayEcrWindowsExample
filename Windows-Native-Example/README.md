@@ -14,6 +14,8 @@ used from a WPF till. (`Core/` below is `src/AmwalECR.Example.Core/`; `Views/`,
 
 - **How it is built** (layering, state machine, threading, extension recipes):
   [docs/implementation.md](docs/implementation.md).
+- **Full code examples** (Wi‑Fi and Web Service setup + sale / void / refund / inquiry / receipt):
+  [docs/operation-examples.md](docs/operation-examples.md).
 - **The whole repository** (this sample, the ASP.NET Core web sample that reuses Core, prerequisites,
   every check): the [umbrella README](../README.md).
 
@@ -57,6 +59,24 @@ USB cable and Bluetooth terminals can be added so a terminal list matches the An
 one, but their config card reads "*X* is not supported in this sample" and Start stays
 disabled.
 
+## Setup structure (same as Android ECR-simulator)
+
+Amwal issues **two different** signing secrets. They live in **global settings** on the
+Terminals screen (not on the Add/Edit terminal form):
+
+| Settings card | Used for |
+|---|---|
+| Wi‑Fi / LAN secure hash key | Wi‑Fi, USB cable, Bluetooth modes |
+| Web Service settings (SIT/UAT/PROD + Web Service key) | Web Service mode only |
+
+| Add/Edit terminal | Fields |
+|---|---|
+| Wi‑Fi | name, serial, IP, port — **no key** |
+| Web Service | name, serial, merchant ID, terminal ID — **no key** |
+
+Operations pick `settings.SecureHashKeyFor(selected.Mode)` once. The transaction config
+card shows **one** key status for the selected mode.
+
 ## Web Service initialization
 
 Use this when TMS set `ecrMode: 4`. The till talks to the Amwal Hub over HTTPS — not to the
@@ -73,10 +93,12 @@ terminal's Wi‑Fi IP. There is no fake Hub; you need real credentials from Amwa
 
 ### In the app
 
-1. **Terminals** screen → set **Environment** and paste the *Web Service secure hash key*
-   (keys are trimmed, checked with `EcrConfig.IsValidSecureHashKey`, and saved encrypted).
+1. **Terminals** screen → **Web Service settings** card → set **Environment** and paste the
+   *Web Service secure hash key* (the Wi‑Fi/LAN card above it is a different secret — leave
+   it alone for Hub work). Keys are trimmed, checked with `EcrConfig.IsValidSecureHashKey`,
+   and saved encrypted.
 2. **Add terminal** → mode **Web Service**, name, serial, merchant ID, terminal ID.
-   Leave IP/port blank (they are not used).
+   No key field on this form.
 3. **Transaction** → select that terminal. The config card must be ready before **Start**
    enables:
    - Transport: `HTTPS Web Service (JSON HMAC)`
@@ -93,7 +115,8 @@ terminal's Wi‑Fi IP. There is no fake Hub; you need real credentials from Amwa
 
 On a lost answer the result is **Outcome unknown** (often a `Declined` with
 `NextStep.InquireByMerchantReference` / `NO_RESPONSE`); use **Inquire by reference**, never
-retry the sale. Full SDK checklist:
+retry the sale. Full C# for setup and each operation:
+[docs/operation-examples.md](docs/operation-examples.md). SDK checklist:
 [AmwalPay.Ecr integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
 
 ## Running it

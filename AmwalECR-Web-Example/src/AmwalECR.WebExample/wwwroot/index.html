@@ -18,7 +18,6 @@
     <nav aria-label="Sections">
       <a href="#transaction" data-route="transaction">Transaction</a>
       <a href="#terminals" data-route="terminals">Terminals</a>
-      <a href="#settings" data-route="settings">Settings</a>
     </nav>
   </header>
 
@@ -125,22 +124,12 @@
       <p id="link-lost" class="banner error" role="status" hidden>The connection to the app was lost. Still trying; the transaction carries on regardless.</p>
     </section>
 
-    <!-- Terminals -------------------------------------------------------------------- -->
+    <!-- Terminals + settings (same structure as Android ECR-simulator / WPF sample) -->
     <section id="view-terminals" class="view" aria-labelledby="h-terminals" hidden>
-      <div class="row spread">
-        <h2 id="h-terminals" tabindex="-1">Registered terminals</h2>
-        <button id="btn-add-terminal" type="button" class="primary compact">Add terminal</button>
-      </div>
-      <p id="terminals-notice" class="banner error" role="status" hidden></p>
-      <p id="terminals-empty" class="body center" hidden>No terminals yet.<br>Click “Add terminal” to register a POS terminal.</p>
-      <ul id="terminal-list" class="cards"></ul>
-    </section>
-
-    <!-- Settings --------------------------------------------------------------------- -->
-    <section id="view-settings" class="view" aria-labelledby="h-settings" hidden>
-      <h2 id="h-settings" class="sr-only" tabindex="-1">Settings</h2>
+      <h2 id="h-settings" class="sr-only" tabindex="-1">Terminals and settings</h2>
       <p id="settings-notice" class="banner error" role="status" hidden></p>
 
+      <!-- Global credentials: two mode-specific keys (not per terminal). -->
       <section class="card" aria-labelledby="h-lan">
         <h3 id="h-lan">Wi‑Fi / LAN settings</h3>
         <p class="caption">Signing key for Wi‑Fi, USB cable, and Bluetooth ECR (sorted key=value HMAC).</p>
@@ -149,7 +138,7 @@
 
       <section class="card" aria-labelledby="h-web">
         <h3 id="h-web">Web Service settings</h3>
-        <p class="caption">Target environment and signing key for Web Service ECR (JSON body HMAC).</p>
+        <p class="caption">Target environment and signing key for Web Service ECR (JSON body HMAC). This is a different secret from the Wi‑Fi/LAN key.</p>
         <fieldset class="plain radios" id="env-group">
           <legend>Environment</legend>
         </fieldset>
@@ -157,6 +146,14 @@
       </section>
 
       <p class="caption">Keys are stored encrypted with ASP.NET Core Data Protection. Unlike the Windows sample there is no Show button: the server never sends a stored key back to the browser, so a key can be replaced or cleared but not read.</p>
+
+      <div class="row spread" style="margin-top:1.5rem">
+        <h2 id="h-terminals" tabindex="-1">Registered terminals</h2>
+        <button id="btn-add-terminal" type="button" class="primary compact">Add terminal</button>
+      </div>
+      <p id="terminals-notice" class="banner error" role="status" hidden></p>
+      <p id="terminals-empty" class="body center" hidden>No terminals yet.<br>Click “Add terminal” to register a POS terminal.</p>
+      <ul id="terminal-list" class="cards"></ul>
     </section>
   </main>
 

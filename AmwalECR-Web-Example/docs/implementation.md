@@ -7,7 +7,9 @@
 For .NET web/backend developers who want to learn how to put a POS-terminal payment flow
 behind a web application without getting it wrong, and for maintainers extending this
 sample. It explains **why** the code is shaped the way it is; the [README](../README.md) is
-how to run it.
+how to run it. For **full Wi‑Fi and Web Service code** (setup + each operation), see the
+shared Core cookbook
+[operation-examples.md](../../Windows-Native-Example/docs/operation-examples.md).
 
 Everything below was read from the code and, where it says *verified*, exercised on
 2026-09-21 against a signed fake terminal (`dotnet build`, `dotnet test` — 110 cases green,
@@ -22,7 +24,8 @@ Contents: [1 Goals and architecture](#1-goals-and-architecture) ·
 [5 The API](#5-the-api) · [6 Validation](#6-validation) · [7 Security model](#7-security-model) ·
 [8 Front end](#8-front-end) · [9 Logging](#9-logging) · [10 Tests and tools](#10-tests-and-tools) ·
 [11 Extension recipes](#11-extension-recipes) · [12 Deployment](#12-deployment-notes) ·
-[13 Known limitations](#13-known-limitations)
+[13 Known limitations](#13-known-limitations) ·
+[Full operation examples (Wi‑Fi / Web Service)](../../Windows-Native-Example/docs/operation-examples.md)
 
 ---
 
@@ -215,12 +218,14 @@ pins that).
 ## 3a. Web Service initialization
 
 Operator steps: [README — Web Service initialization](../README.md#web-service-initialization).
+Full C# for setup and every Hub operation:
+[operation-examples.md §8–13](../../Windows-Native-Example/docs/operation-examples.md#8-web-service--setup).
 This sample does not re-implement init; it exposes Core's path over HTTP.
 
 | Step | HTTP / UI | Core / SDK |
 |---|---|---|
-| 1. Environment + Web Service key | `PUT /api/settings/environment` with `{ "environment": "UAT" }`, `PUT /api/settings/keys/webService` with `{ "value": "…" }` — write-only; invalid hex refused with `422` | `EcrExampleSettings.Environment`, `WebServiceSecureHashKey` |
-| 2. Register terminal | `POST /api/terminals` with `ecrMode: 4`, `serialNumber`, `merchantId`, `terminalId` (numeric; no IP/port) | `TerminalRepository` + `TerminalValidator` |
+| 1. Environment + Web Service key | On **Terminals** UI (settings cards); API: `PUT /api/settings/environment` with `{ "environment": "UAT" }`, `PUT /api/settings/keys/webService` with `{ "value": "…" }` — write-only; invalid hex refused with `422` | `EcrExampleSettings.Environment`, `WebServiceSecureHashKey` |
+| 2. Register terminal | `POST /api/terminals` with `ecrMode: 4`, `serialNumber`, `merchantId`, `terminalId` (numeric; no IP/port; **no key**) | `TerminalRepository` + `TerminalValidator` |
 | 3. Confirm plan ready | `GET /api/terminals/{serial}/config` → `isReady: true`, transport `HTTPS Web Service (JSON HMAC)`, issues empty | `SelectedTerminalConfig.Resolve` → `EcrSessions.Plan` (no Hub call) |
 | 4. First operation | `POST /api/transactions` → `202`, then poll | `TransactionEngine` → `EcrSessions.Open` → `SaleAsync` / … |
 
@@ -727,13 +732,13 @@ files under [`wwwroot/`](../src/AmwalECR.WebExample/wwwroot/) are served as they
 
 | File | Owns |
 |---|---|
-| [`app.js`](../src/AmwalECR.WebExample/wwwroot/app.js) | Boot: fetch `/api/meta` (a failure shows the `#fatal` banner), init the four screens, hash routing (`#transaction` `#terminals` `#settings`), title and `aria-current`, Escape-to-go-back, the shared `confirm()` modal, refresh on tab visibility. |
+| [`app.js`](../src/AmwalECR.WebExample/wwwroot/app.js) | Boot: fetch `/api/meta` (a failure shows the `#fatal` banner), init Transaction + Terminals (settings embedded on Terminals), hash routing (`#transaction` `#terminals`; `#settings` redirects), title and `aria-current`, Escape-to-go-back, the shared `confirm()` modal, refresh on tab visibility. |
 | [`js/api.js`](../src/AmwalECR.WebExample/wwwroot/js/api.js) | The only place that calls `fetch`. `ApiError` (`status`, `body`, `.fields` = a 422's `errors`); always sends JSON on mutating calls; `acknowledge` uses `keepalive` so it survives a reload; `qrUrl()`. |
 | [`js/dom.js`](../src/AmwalECR.WebExample/wwwroot/js/dom.js) | `$`, `h()` (element builder), `show()`, `setText()`, `announce()`, `copyText()`. |
 | [`js/amount.js`](../src/AmwalECR.WebExample/wwwroot/js/amount.js) | Pure amount functions (`keyedDigits`, `format`, `append`, `backspace`) plus `attachAmountInput()`. DOM-free at the top so node can test it. |
 | [`js/transaction.js`](../src/AmwalECR.WebExample/wwwroot/js/transaction.js) | The transaction screen: form state, layout from meta, config card, start, the poll loop, result dialog, look-up and receipt actions, reload-resume. |
 | [`js/terminals.js`](../src/AmwalECR.WebExample/wwwroot/js/terminals.js) | Terminal list and the add/edit dialog. |
-| [`js/settings.js`](../src/AmwalECR.WebExample/wwwroot/js/settings.js) | Environment radios and the write-only key boxes. |
+| [`js/settings.js`](../src/AmwalECR.WebExample/wwwroot/js/settings.js) | Environment radios and the write-only key boxes on the Terminals screen (two mode-specific secrets, matching Android/WPF). |
 | [`js/log.js`](../src/AmwalECR.WebExample/wwwroot/js/log.js) | The debug panel: polls `/api/log` every second **only while the `<details>` is open and the tab visible**; Copy, Clear. |
 
 ### Rendering rule

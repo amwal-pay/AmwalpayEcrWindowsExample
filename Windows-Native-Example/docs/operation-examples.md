@@ -1,0 +1,499 @@
+# Full examples — Wi‑Fi and Web Service
+
+Copy-paste oriented guide for integrators reading these samples. Each subsection is a
+complete flow for **one transport**. Same structure as the Android ECR-simulator and the
+SDK’s [integration guide §5](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#5-full-examples--wifi-and-web-service).
+
+**Keys live in settings** (two different Amwal secrets). **Terminal records hold addresses
+only** — no secure-hash field on Add/Edit terminal. Both the WPF and web samples share
+this Core path (`SelectedTerminalConfig` → `EcrSessions.Plan` → `EcrSessions.Open`).
+
+| | Wi‑Fi (`ecrMode: 2`) | Web Service (`ecrMode: 4`) |
+|---|---|---|
+| Settings | *Wi‑Fi/LAN secure hash key* | Environment (SIT/UAT/PROD) + *Web Service secure hash key* |
+| Terminal form | name, serial, IP, port | name, serial, merchant ID, terminal ID |
+| Client | `EcrTerminal` / LAN session | `EcrWebServiceTerminal` / Hub session |
+| Probe / e-receipt | Yes | No |
+
+```csharp
+using System.Diagnostics;
+using System.Globalization;
+using AmwalECR.Example.Core.Data;
+using AmwalECR.Example.Core.Services;
+using AmwalPay.Ecr;
+
+// From EcrExampleSettings (encrypted) — never hard-code in production
+string wifiKey = settings.WifiSecureHashKey;
+string webServiceKey = settings.WebServiceSecureHashKey;
+EcrEnvironment environment = settings.Environment;   // SIT / UAT / PROD
+```
+
+---
+
+## How the samples open a session
+
+Both apps resolve a registered `Terminal` through Core, then open one session for every mode:
+
+```csharp
+SelectedTerminalConfig config = SelectedTerminalConfig.Resolve(
+    terminal,
+    environment: settings.Environment,
+    secureHashKey: settings.SecureHashKeyFor(terminal.Mode));   // one key by mode
+
+if (!config.IsReady)
+{
+    screen.Show(string.Join("\n", config.Issues));
+    return;
+}
+
+EcrOpenedSession session = EcrSessions.Open(
+    terminalSerial: terminal.SerialNumber,
+    plan: config.Plan,
+    logger: EcrLogger.From(Debug.WriteLine));
+
+// TransactionEngine.RunAsync does the same, then SaleAsync / VoidAsync / …
+```
+
+The typed clients below are equivalent when you are not using `Open` — useful when
+porting into your own till without the sample’s engine.
+
+---
+
+## 1. Wi‑Fi / LAN — setup
+
+TMS: `terminalMode: 1`, `ecrMode: 2`. Same LAN as the till. Terminal shows IP:port under
+the card logos.
+
+**In the sample UI:** Terminals → paste *Wi‑Fi/LAN secure hash key* → Add terminal
+(mode Wi‑Fi, IP, port) → Transaction → select it (config card must be ready).
+
+```csharp
+EcrTerminal OpenWifiTerminal(Terminal registered, string wifiSecureHashKey)
+{
+    // Same mapping SelectedTerminalConfig uses for EcrMode.Wifi
+    var plan = EcrSessions.Plan(
+        link: new EcrLink.Lan(Host: registered.IpAddress, Port: registered.Port is >= 1 and <= 65535
+            ? registered.Port
+            : EcrConfig.DefaultPort),
+        config: new EcrConfig
+        {
+            SecureHashKey = wifiSecureHashKey,
+            EcrId = "TILL-04",
+            CurrencyCode = "512",
+            MinorUnitDigits = 3,
+            ResponseTimeout = TimeSpan.FromSeconds(120),
+        });
+
+    if (!plan.IsReady)
+        throw new InvalidOperationException(string.Join("\n", plan.Issues));
+
+    return EcrSessions.LanTerminal(
+        registered.SerialNumber,
+        plan,
+        EcrLogger.From(msg => Debug.WriteLine(msg, "EcrLan")));
+}
+
+// Or via Core:
+// var config = SelectedTerminalConfig.Resolve(registered, environment, wifiSecureHashKey);
+// var session = EcrSessions.Open(registered.SerialNumber, config.Plan, logger: …);
+```
+
+Probe before a money-moving call (LAN only — the sample’s engine does this automatically):
+
+```csharp
+if (!await wifi.IsReachableAsync())
+{
+    screen.Show("Terminal not reachable — check power, Wi‑Fi, and firewall (TCP 9100)");
+    return;
+}
+```
+
+---
+
+## 2. Wi‑Fi / LAN — sale
+
+```csharp
+async Task WifiSaleAsync(EcrTerminal wifi, decimal amount, string orderNumber)
+{
+    // Persist orderNumber before the call — needed if the answer is lost
+    switch (await wifi.SaleAsync(amount, merchantReference: orderNumber))
+    {
+        case EcrResult.Approved a when a.PartialApproval:
+            var requested = decimal.Parse(a.RequestedAmount, CultureInfo.InvariantCulture);
+            var taken = decimal.Parse(a.Amount, CultureInfo.InvariantCulture);
+            screen.Show($"Only {a.Amount} approved. Collect {requested - taken} another way.");
+            CompleteSale(a);
+            break;
+
+        case EcrResult.Approved a:
+            CompleteSale(a);   // a.Amount, a.Rrn, a.AuthCode, a.MaskedPan
+            break;
+
+        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
+            HandleUnknownOutcome(orderNumber, d.Reason);   // inquire; do not retry
+            break;
+
+        case EcrResult.Declined d:
+            screen.Show(d.Reason);
+            break;
+
+        case EcrResult.Failed f when f.Settled:
+            Reconcile(((EcrInquiry.Found)f.Recovered!).Transaction);
+            break;
+
+        case EcrResult.Failed f:
+            HandleUnknownOutcome(orderNumber, f.Failure.Message);
+            break;
+    }
+}
+```
+
+**Via the sample engine** (WPF view-model / web `POST /api/transactions`):
+
+```csharp
+var state = await engine.RunAsync(
+    new TransactionRequest
+    {
+        TerminalSerial = serial,
+        Type = EcrTransactionType.Sale,
+        Amount = 1.234m,
+        MerchantReference = orderNumber,
+    },
+    report: ui.ShowBusy,
+    cancellationToken);
+// TransactionOutcomes classifies Approved / Declined / Failed → screen state
+```
+
+---
+
+## 3. Wi‑Fi / LAN — void
+
+```csharp
+async Task WifiVoidAsync(EcrTerminal wifi, string receiptNumber)
+{
+    switch (await wifi.VoidAsync(receiptNumber: receiptNumber))
+    {
+        case EcrResult.Approved a:
+            // Do not print a.AuthCode on a void — it is a placeholder
+            RecordVoid(a.Rrn, a.Amount);
+            break;
+        case EcrResult.Declined d:
+            screen.Show(d.Reason);
+            break;
+        case EcrResult.Failed f:
+            HandleUnknownOutcome("", f.Failure.Message);
+            break;
+    }
+}
+
+// Original taken on another till (LAN only)
+await wifi.VoidAsync(receiptNumber: "215", originalTerminalId: "31629");
+```
+
+---
+
+## 4. Wi‑Fi / LAN — refund
+
+```csharp
+async Task WifiRefundAsync(
+    EcrTerminal wifi,
+    decimal amount,
+    string receiptNumber,
+    string transactionDate)   // yyyyMMdd
+{
+    // Cardholder must present the card
+    switch (await wifi.RefundAsync(
+        amount: amount,
+        receiptNumber: receiptNumber,
+        transactionDate: transactionDate))
+    {
+        case EcrResult.Approved a: CompleteRefund(a); break;
+        case EcrResult.Declined d: screen.Show(d.Reason); break;
+        case EcrResult.Failed f:   HandleUnknownOutcome("", f.Failure.Message); break;
+    }
+}
+```
+
+---
+
+## 5. Wi‑Fi / LAN — inquiry by receipt (STAN)
+
+```csharp
+async Task WifiInquireByStanAsync(
+    EcrTerminal wifi,
+    string receiptNumber,
+    string transactionDate)   // yyyyMMdd
+{
+    switch (await wifi.InquireAsync(
+        receiptNumber: receiptNumber,
+        transactionDate: transactionDate))
+    {
+        case EcrInquiry.Found found:
+            var txn = found.Transaction;
+            screen.Show($"{txn.Type} {txn.Status} {txn.Amount} {txn.Currency}");
+            if (txn.CanVoid) EnableVoid();
+            if (txn.CanRefund) EnableRefund();
+            break;
+        case EcrInquiry.NotFound n:
+            screen.Show(n.Reason);
+            break;
+        case EcrInquiry.Failed f:
+            screen.Show(f.Failure.Message);   // lookup failed — still unknown
+            break;
+    }
+}
+```
+
+---
+
+## 6. Wi‑Fi / LAN — inquiry by merchant reference
+
+```csharp
+async Task WifiInquireByReferenceAsync(EcrTerminal wifi, string orderNumber)
+{
+    switch (await wifi.InquireByReferenceAsync(
+        originalReference: orderNumber,
+        transactionDate: ""))   // blank — do not invent "today"
+    {
+        case EcrInquiry.Found found:  Reconcile(found.Transaction); break;
+        case EcrInquiry.NotFound:     /* nothing taken — safe to offer a new sale */ break;
+        case EcrInquiry.Failed:       Escalate(); break;
+    }
+}
+```
+
+In the sample UI: Inquiry → **Look up by reference** (date/receipt fields hidden).
+
+---
+
+## 7. Wi‑Fi / LAN — e-receipt
+
+```csharp
+async Task WifiReceiptAsync(
+    EcrTerminal wifi,
+    string receiptNumber,
+    string transactionDate)
+{
+    switch (await wifi.ReceiptAsync(
+        receiptNumber: receiptNumber,
+        transactionDate: transactionDate))
+    {
+        case EcrReceipt.Ready ready:         screen.ShowQrCode(ready.Url); break;
+        case EcrReceipt.Unavailable missing: screen.Show(missing.Reason); break;
+        case EcrReceipt.Failed failed:       screen.Show(failed.Failure.Message); break;
+    }
+}
+```
+
+The samples call `TransactionEngine.FetchReceiptAsync` after an inquiry result and draw a
+QR (WPF / server-side SVG on web).
+
+---
+
+## 8. Web Service — setup
+
+TMS: `terminalMode: 1`, `ecrMode: 4`. No terminal IP — HTTPS to the Amwal Hub. Use the
+**Web Service** key (not the Wi‑Fi key) and numeric merchant/terminal IDs.
+
+**In the sample UI:** Terminals → Web Service settings (environment + key) → Add terminal
+(mode Web Service, merchant ID, terminal ID — no IP) → Transaction → select it.
+
+```csharp
+EcrWebServiceTerminal OpenWebServiceTerminal(
+    Terminal registered,
+    string webServiceSecureHashKey,
+    EcrEnvironment environment)
+{
+    var plan = EcrSessions.Plan(
+        link: new EcrLink.WebService(
+            MerchantId: registered.MerchantId,
+            TerminalId: registered.TerminalId),
+        config: new EcrConfig
+        {
+            SecureHashKey = webServiceSecureHashKey,
+            Environment = environment,
+            EcrId = "TILL-04",
+            CurrencyCode = "512",
+            MinorUnitDigits = 3,
+        });
+
+    if (!plan.IsReady)
+        throw new InvalidOperationException(string.Join("\n", plan.Issues));
+    // plan.ConnectionSummary → e.g. "UAT · merchant 13593 · terminal 101311"
+
+    return EcrSessions.WebServiceTerminal(
+        registered.SerialNumber,
+        plan,
+        EcrLogger.From(msg => Debug.WriteLine(msg, "EcrWebService")));
+}
+
+// Core path (what TransactionEngine uses):
+// var config = SelectedTerminalConfig.Resolve(registered, environment, webServiceSecureHashKey);
+// var session = EcrSessions.Open(registered.SerialNumber, config.Plan, logger: …);
+// ProbeReachabilityAsync returns null — engine skips it.
+```
+
+Hub hostnames are SDK-internal (chosen from SIT / UAT / PROD). Paths:
+`/Ecr/Sale`, `/Ecr/Void`, `/Ecr/Refund`, `/Ecr/Inquiry`.
+
+---
+
+## 9. Web Service — sale
+
+```csharp
+async Task WebServiceSaleAsync(
+    EcrWebServiceTerminal hub,
+    decimal amount,
+    string orderNumber)
+{
+    // Always pass and persist merchantReference before the call
+    switch (await hub.SaleAsync(amount, merchantReference: orderNumber))
+    {
+        case EcrResult.Approved a when a.PartialApproval:
+            CompleteSale(a);
+            break;
+
+        case EcrResult.Approved a:
+            CompleteSale(a);
+            break;
+
+        // Transport / unknown — NOT a refusal. Inquire; do not resend.
+        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
+            HandleUnknownOutcome(orderNumber, d.Reason);   // often NO_RESPONSE
+            break;
+
+        case EcrResult.Declined d:
+            screen.Show(d.Reason);
+            break;
+
+        case EcrResult.Failed f:
+            // Non-numeric merchant/terminal IDs (nothing was sent)
+            HandleUnknownOutcome(orderNumber, f.Failure.Message);
+            break;
+    }
+}
+```
+
+`TransactionOutcomes` in Core treats `NextStep.InquireByMerchantReference` (and Web
+Service `NO_RESPONSE`) as **Outcome unknown** with **Inquire by reference** — never a
+retry button.
+
+---
+
+## 10. Web Service — void
+
+```csharp
+async Task WebServiceVoidAsync(EcrWebServiceTerminal hub, string receiptNumber)
+{
+    switch (await hub.VoidAsync(receiptNumber: receiptNumber))
+    {
+        case EcrResult.Approved a:
+            RecordVoid(a.Rrn, a.Amount);
+            break;
+        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
+            HandleUnknownOutcome("", d.Reason);
+            break;
+        case EcrResult.Declined d:
+            screen.Show(d.Reason);
+            break;
+        case EcrResult.Failed f:
+            HandleUnknownOutcome("", f.Failure.Message);
+            break;
+    }
+}
+```
+
+---
+
+## 11. Web Service — refund
+
+```csharp
+async Task WebServiceRefundAsync(
+    EcrWebServiceTerminal hub,
+    decimal amount,
+    string receiptNumber,
+    string transactionDate)   // yyyyMMdd
+{
+    switch (await hub.RefundAsync(
+        amount: amount,
+        receiptNumber: receiptNumber,
+        transactionDate: transactionDate))
+    {
+        case EcrResult.Approved a: CompleteRefund(a); break;
+        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
+            HandleUnknownOutcome("", d.Reason); break;
+        case EcrResult.Declined d: screen.Show(d.Reason); break;
+        case EcrResult.Failed f:   HandleUnknownOutcome("", f.Failure.Message); break;
+    }
+}
+```
+
+---
+
+## 12. Web Service — inquiry by receipt (STAN)
+
+```csharp
+async Task WebServiceInquireByStanAsync(
+    EcrWebServiceTerminal hub,
+    string receiptNumber,
+    string transactionDate)   // yyyyMMdd
+{
+    switch (await hub.InquireAsync(
+        receiptNumber: receiptNumber,
+        transactionDate: transactionDate))
+    {
+        case EcrInquiry.Found found:
+            Reconcile(found.Transaction);
+            break;
+        case EcrInquiry.NotFound n:
+            screen.Show(n.Reason);
+            break;
+        case EcrInquiry.Failed f:
+            // Lookup failed (often ConnectionLost) — still unknown; ask again
+            screen.Show(f.Failure.Message);
+            break;
+    }
+}
+```
+
+---
+
+## 13. Web Service — inquiry by merchant reference
+
+```csharp
+async Task WebServiceInquireByReferenceAsync(
+    EcrWebServiceTerminal hub,
+    string orderNumber)
+{
+    // Prefer after a lost sale. Date may be blank — samples do not invent "today".
+    switch (await hub.InquireByReferenceAsync(
+        originalReference: orderNumber,
+        transactionDate: ""))
+    {
+        case EcrInquiry.Found found:  Reconcile(found.Transaction); break;
+        case EcrInquiry.NotFound:     /* Hub has no match — may still need batch reconcile */ break;
+        case EcrInquiry.Failed:       Escalate(); break;
+    }
+}
+```
+
+---
+
+## 14. What Web Service does not support (in these samples / SDK 1.0.0)
+
+| Operation | Wi‑Fi | Web Service |
+|---|---|---|
+| `ReceiptAsync` / e-receipt QR | Yes | **No** — UI says so; engine returns `EcrReceipt.Unavailable` |
+| Reachability probe | Yes | **No** — `ProbeReachabilityAsync` is `null`, skipped |
+| `originalTerminalId` (other till) | Yes | Ignored on an opened Web Service session |
+| Auto-inquire after lost sale | Yes (SDK default) | **No** — offer **Inquire by reference** |
+
+---
+
+## Related docs
+
+- Sample architecture: [implementation.md](implementation.md) (WPF / Core)
+- Web host: [../../AmwalECR-Web-Example/docs/implementation.md](../../AmwalECR-Web-Example/docs/implementation.md)
+- Operator steps: [../README.md](../README.md#setup-structure-same-as-android-ecr-simulator)
+- SDK cookbook (same operations, no sample types):
+  [AmwalPay.Ecr integration guide §5](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#5-full-examples--wifi-and-web-service)

@@ -6,7 +6,8 @@ import { initSettings } from './js/settings.js';
 import { initLog } from './js/log.js';
 
 const TITLE = 'Amwal ECR Example';
-const routes = ['transaction', 'terminals', 'settings'];
+// Settings live on the Terminals screen (Android ECR-simulator / WPF parity).
+const routes = ['transaction', 'terminals'];
 
 /** A small modal confirm, in place of window.confirm: styled, focus-trapped, and safe by default. */
 function confirm({ title, message, action }) {
@@ -45,11 +46,17 @@ async function main() {
   const transaction = initTransaction({ meta, onFinished: log.refresh });
   const terminals = initTerminals({ meta, confirm });
   const settings = initSettings({ meta, confirm });
-  const screens = { transaction, terminals, settings };
+  const screens = { transaction, terminals };
 
   let current = null;
   function route({ moveFocus }) {
-    const name = routes.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'transaction';
+    let hash = location.hash.slice(1);
+    // Old bookmarks / docs links to #settings → Terminals (where settings live).
+    if (hash === 'settings') {
+      location.replace('#terminals');
+      hash = 'terminals';
+    }
+    const name = routes.includes(hash) ? hash : 'transaction';
     const changed = name !== current;
     current = name;
 
@@ -62,6 +69,7 @@ async function main() {
 
     // Terminals or keys may have changed while away; the config card must not be stale.
     screens[name].refresh?.();
+    if (name === 'terminals') settings.refresh?.();
     if (changed && moveFocus) screens[name].focus();
   }
 

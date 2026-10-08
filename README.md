@@ -117,15 +117,16 @@ there is no fake Hub in this repo. You need from Amwal / TMS:
 
 | You supply | Where in the samples |
 |---|---|
-| Environment (`SIT` / `UAT` / `PROD`) | Settings (WPF: above the terminal list; web: **Settings** tab) |
-| **Web Service** secure hash key (not the Wi‑Fi key) | Same Settings — *Web Service secure hash key* |
-| Terminal serial | **Add terminal** |
+| Environment (`SIT` / `UAT` / `PROD`) | **Terminals** → Web Service settings card (above the terminal list, both apps) |
+| **Web Service** secure hash key (not the Wi‑Fi key) | Same card — *Web Service secure hash key* (Wi‑Fi/LAN key is a different secret) |
+| Terminal serial | **Add terminal** (no key field) |
 | Merchant ID + terminal ID (numeric) | **Add terminal**, mode **Web Service** |
 
 Then:
 
 1. Save environment and the Web Service key (validated as even-length hex, ≥ 16 chars).
-2. Register a terminal with mode **Web Service**, serial, merchant ID, terminal ID (no IP/port).
+2. Register a terminal with mode **Web Service**, serial, merchant ID, terminal ID (no IP/port,
+   no key — same as the Android ECR-simulator).
 3. On the Transaction screen, select that terminal — the config card must show **ready**
    (`SelectedTerminalConfig` → `EcrSessions.Plan` → `IsReady`). Typical blockers: missing IDs,
    non-numeric IDs, or *"Web Service secure hash key is not configured"*.
@@ -181,6 +182,9 @@ automation tests for the WPF app and its view-models are not unit-tested; see th
 - [Windows-Native-Example/docs/implementation.md](Windows-Native-Example/docs/implementation.md):
   layering, wiring, persistence, the SDK call path (including Web Service plan/open), the state
   machine, threading, XAML pitfalls, tests, extension recipes.
+- [Windows-Native-Example/docs/operation-examples.md](Windows-Native-Example/docs/operation-examples.md):
+  **full Wi‑Fi and Web Service examples** — setup and each operation (sale, void, refund,
+  inquiry, receipt), matching the SDK integration guide §5 and these samples’ Core path.
 - [AmwalECR-Web-Example/README.md](AmwalECR-Web-Example/README.md) and its
   [docs/implementation.md](AmwalECR-Web-Example/docs/implementation.md): the web sample (same Core
   init path behind HTTP).

@@ -2,7 +2,8 @@ import { api, ApiError } from './api.js';
 import { $, h, show, setText, announce } from './dom.js';
 
 /**
- * Environment and signing keys — the port of SettingsView.
+ * Environment and signing keys — embedded on the Terminals screen (Android ECR-simulator /
+ * WPF SettingsView above the terminal list). Two mode-specific secrets, not per-terminal.
  *
  * Keys are write-only here. The server never returns a stored key, so where the WPF app
  * has Show / Hide this page has "Configured", Replace and Clear. A typed key lives in the

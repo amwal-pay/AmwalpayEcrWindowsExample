@@ -17,6 +17,10 @@ screens, form rules, wording and payment-safety behaviour as the
 Built on the C# `AmwalPay.Ecr` SDK. Vanilla HTML/CSS/JS on the client: **no build step, no
 CDN, works offline.**
 
+**Full code examples** (Wi‑Fi and Web Service setup + sale / void / refund / inquiry):
+[../Windows-Native-Example/docs/operation-examples.md](../Windows-Native-Example/docs/operation-examples.md)
+(shared Core — same path this app uses via `TransactionEngine`).
+
 > ## This sample has no authentication
 >
 > It can take payments and replace signing keys for anyone who can reach it. It listens on
@@ -86,14 +90,25 @@ python3 -u ../Windows-Native-Example/tools/fake_pos_server_signed.py \
 > developer machine other tooling (the Dart/Flutter tools, for one) may already listen in
 > that range and will silently answer instead of your fake. `19100` is safe.
 
-1. **Settings** → paste the same key as the *Wi‑Fi/LAN secure hash key* → **Save key**.
-2. **Terminals** → **Add terminal**: any name and serial, mode Wi‑Fi, IP `127.0.0.1`,
-   port `19100`.
+1. **Terminals** → *Wi‑Fi / LAN settings* → paste the same key as the *Wi‑Fi/LAN secure hash
+   key* → **Save key** (settings sit above the terminal list, as in the Android simulator).
+2. Same screen → **Add terminal**: any name and serial, mode Wi‑Fi, IP `127.0.0.1`,
+   port `19100` — **no key on the terminal form**.
 3. **Transaction** → key an amount → **Start transaction**.
 
 Flags worth trying: `--decline 51`, `--partial`, `--delay 8` (then **Cancel**, or reload the
 page), `--drop-sale`, `--drop-sale --drop-first-inquiry` (an unknown outcome you resolve
 with **Inquire by reference**), `--not-found`.
+
+### Setup structure (same as Android ECR-simulator)
+
+Two **different** secrets in global settings on the Terminals screen; terminal records
+hold addresses only; operations pick one key by mode:
+
+| Settings (on Terminals) | Terminal form | Operations |
+|---|---|---|
+| Wi‑Fi/LAN key | Wi‑Fi: IP + port | `SecureHashKeyFor(Wifi)` |
+| Web Service key + SIT/UAT/PROD | Web Service: merchant + terminal IDs | `SecureHashKeyFor(WebService)` |
 
 ### Web Service initialization
 
@@ -102,9 +117,9 @@ no fake Hub; you need real credentials from Amwal / TMS.
 
 | You supply | In this sample |
 |---|---|
-| Environment (`SIT` / `UAT` / `PROD`) | **Settings** → environment |
-| **Web Service** secure hash key (not the Wi‑Fi key) | **Settings** → *Web Service secure hash key* → **Save key** (write-only; API never echoes it) |
-| Serial, merchant ID, terminal ID (numeric) | **Terminals** → **Add terminal**, mode **Web Service** |
+| Environment (`SIT` / `UAT` / `PROD`) | **Terminals** → Web Service settings → environment |
+| **Web Service** secure hash key (not the Wi‑Fi key) | Same card → *Web Service secure hash key* → **Save key** (write-only; API never echoes it) |
+| Serial, merchant ID, terminal ID (numeric) | **Add terminal**, mode **Web Service** (no key field) |
 
 Then:
 
@@ -133,7 +148,7 @@ Every WPF feature exists here and is driven by Core.
 | **Terminals** list / add / edit / delete, keyed by serial | Same screen and dialog; `GET`/`POST /api/terminals`, `PUT`/`DELETE /api/terminals/{serial}` | `TerminalRepository` (same JSON file format), `TerminalValidator` — same fields and messages |
 | Modes Wi‑Fi, USB cable, Bluetooth, Web Service; USB and Bluetooth registrable but "not supported in this sample" | Same, with the same hints and notes | `EcrModes`, `SelectedTerminalConfig` |
 | Connection summary per terminal | Same text (`127.0.0.1:9100`, `Merchant 12 · Terminal 34`, `USB cable`) | `Terminal.ConnectionSummary()` |
-| Environment (SIT/UAT/PROD) and both signing keys, key label per mode, key validation | **Settings** screen; keys checked with `EcrConfig.IsValidSecureHashKey` | `EcrExampleSettings.SecureHashKeyFor(mode)` |
+| Environment (SIT/UAT/PROD) and both signing keys, key label per mode, key validation | **Terminals** screen (settings cards above the list, as in WPF/Android); keys checked with `EcrConfig.IsValidSecureHashKey` | `EcrExampleSettings.SecureHashKeyFor(mode)` |
 | Secrets encrypted at rest with DPAPI | Encrypted at rest with ASP.NET Core Data Protection, key ring persisted under the data folder | `ISecretProtector` (a second implementation) |
 | Transaction screen: terminal dropdown "name (serial)", operation dropdown | Same | `EcrTransactionTypes.MenuOptions` |
 | Config card: mode, transport, connection, active key and whether it is set, SDK plan issues — shown **before** paying, refreshed when keys or terminals change | Same card; refreshed on returning to the screen, on selecting a terminal and when the tab regains focus | `SelectedTerminalConfig.Resolve` → `EcrSessions.Plan` |
@@ -148,7 +163,7 @@ Every WPF feature exists here and is driven by Core.
 | Result dialog: approved / declined visuals, partial-approval callout, inquiry summary, Reference, can-void / can-refund hints, raw response, Copy | Same, as a modal `<dialog>` | `ResultPresenter` |
 | E-receipt → QR (Wi‑Fi only; Web Service results say so) | Same; the QR is drawn on the server | `ResultPresenter`, `EcrOpenedSession.ReceiptAsync` |
 | Debug output panel: last 500 lines, Copy, Clear | Same, polls while open; `GET/DELETE /api/log` | `LogBuffer`, `EcrLogger.From` |
-| Transaction / Terminals screens, Esc goes back, brand-blue app bar, light theme | Transaction / Terminals / Settings; the WPF brand colours as CSS custom properties; light **and dark**; responsive to phone width | `Themes/Colors.xaml` |
+| Transaction / Terminals screens (settings on Terminals), Esc goes back, brand-blue app bar, light theme | Same two screens; settings cards on Terminals; the WPF brand colours as CSS custom properties; light **and dark**; responsive to phone width | `Themes/Colors.xaml` |
 
 ### Deliberate differences
 
@@ -172,7 +187,6 @@ Every WPF feature exists here and is driven by Core.
   ([details](docs/implementation.md#3-secrets-at-rest)).
 - **No USB channel**, as in the WPF sample: the Windows SDK ships none.
 - **A different date default.** "Today" is the server's date.
-- **Settings is its own tab** (the WPF app puts it above the terminal list).
 - One operator per server: state is in memory and the terminal list is one shared file.
 
 ## API
