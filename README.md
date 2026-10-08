@@ -104,9 +104,41 @@ cd AmwalECR-Web-Example
 dotnet run --project src/AmwalECR.WebExample     # then open http://127.0.0.1:5080
 ```
 
-Neither needs a real terminal to try: use the fake one below. Then, in either app, add the SDK's LAN
-signing key as the *Wi-Fi/LAN secure hash key*, add a Wi-Fi terminal at `127.0.0.1` with the fake's
-port, and start a sale. Web Service terminals need the real Amwal backend and its own key.
+### Wi‑Fi / LAN (fake or real terminal)
+
+Neither sample needs a real terminal to try LAN: use the fake one below. Then, in either app,
+add the SDK's LAN signing key as the *Wi‑Fi/LAN secure hash key*, add a Wi‑Fi terminal at
+`127.0.0.1` with the fake's port, and start a sale.
+
+### Web Service initialization (`ecrMode: 4`)
+
+Web Service does **not** use the terminal's LAN IP. The till calls the Amwal Hub over HTTPS;
+there is no fake Hub in this repo. You need from Amwal / TMS:
+
+| You supply | Where in the samples |
+|---|---|
+| Environment (`SIT` / `UAT` / `PROD`) | Settings (WPF: above the terminal list; web: **Settings** tab) |
+| **Web Service** secure hash key (not the Wi‑Fi key) | Same Settings — *Web Service secure hash key* |
+| Terminal serial | **Add terminal** |
+| Merchant ID + terminal ID (numeric) | **Add terminal**, mode **Web Service** |
+
+Then:
+
+1. Save environment and the Web Service key (validated as even-length hex, ≥ 16 chars).
+2. Register a terminal with mode **Web Service**, serial, merchant ID, terminal ID (no IP/port).
+3. On the Transaction screen, select that terminal — the config card must show **ready**
+   (`SelectedTerminalConfig` → `EcrSessions.Plan` → `IsReady`). Typical blockers: missing IDs,
+   non-numeric IDs, or *"Web Service secure hash key is not configured"*.
+4. Start a sale. The Hub is contacted only then (`EcrSessions.Open` → `SaleAsync`). Store or
+   note the merchant reference before the call so you can **Inquire by reference** after a
+   lost answer.
+
+Hub hosts are resolved by the SDK from the environment (SIT/UAT/PROD); the samples do not
+configure base URLs. Full UI steps:
+[WPF — Web Service initialization](Windows-Native-Example/README.md#web-service-initialization)
+and [web — Web Service initialization](AmwalECR-Web-Example/README.md#web-service-initialization).
+SDK checklist:
+[integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
 
 ## The fake terminal
 
@@ -144,14 +176,16 @@ automation tests for the WPF app and its view-models are not unit-tested; see th
 ## Documentation
 
 - [Windows-Native-Example/README.md](Windows-Native-Example/README.md): what the WPF app does, the
-  amount and form rules, inquiry and unknown outcomes, testing without a terminal.
+  amount and form rules, [Web Service initialization](Windows-Native-Example/README.md#web-service-initialization),
+  inquiry and unknown outcomes, testing without a terminal.
 - [Windows-Native-Example/docs/implementation.md](Windows-Native-Example/docs/implementation.md):
-  layering, wiring, persistence, the SDK call path, the state machine, threading, XAML pitfalls,
-  tests, extension recipes.
+  layering, wiring, persistence, the SDK call path (including Web Service plan/open), the state
+  machine, threading, XAML pitfalls, tests, extension recipes.
 - [AmwalECR-Web-Example/README.md](AmwalECR-Web-Example/README.md) and its
-  [docs/implementation.md](AmwalECR-Web-Example/docs/implementation.md): the web sample.
-- The SDK's own `docs/` (integration guide, API reference, wire protocol) in
-  `github.com/amwal-pay/AmwalpayEcrWindows`.
+  [docs/implementation.md](AmwalECR-Web-Example/docs/implementation.md): the web sample (same Core
+  init path behind HTTP).
+- The SDK's own `docs/` (integration guide — [Web Service init](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process),
+  API reference, wire protocol) in `github.com/amwal-pay/AmwalpayEcrWindows`.
 
 ## Building Windows executables
 

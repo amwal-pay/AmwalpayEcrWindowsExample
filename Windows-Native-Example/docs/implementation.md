@@ -20,7 +20,7 @@ was **not** checked, and the honest limits of this sample.
 - [a. Goals and layering](#a-goals-and-layering)
 - [b. Composition root and wiring](#b-composition-root-and-wiring)
 - [c. Terminals and settings persistence](#c-terminals-and-settings-persistence)
-- [d. From a terminal to an SDK call](#d-from-a-terminal-to-an-sdk-call)
+- [d. From a terminal to an SDK call](#d-from-a-terminal-to-an-sdk-call) — includes [Web Service initialization](#web-service-initialization)
 - [e. The form model](#e-the-form-model)
 - [f. Amount entry](#f-amount-entry)
 - [g. The transaction engine and state machine](#g-the-transaction-engine-and-state-machine)
@@ -311,6 +311,39 @@ Typical issues, all produced by the SDK: `Wi-Fi/LAN secure hash key is not confi
 `Secure hash key must be an even-length hex string of at least 16 characters`,
 `IP address is required for LAN ECR`, `Merchant ID must be numeric`. The key label differs by
 link (`Web Service secure hash key` for Web Service).
+
+### Web Service initialization
+
+Operator-facing steps live in the
+[README](../README.md#web-service-initialization). Under the hood the path is the same three
+SDK calls as LAN; only the link, key and plan fields differ.
+
+| Step | App | SDK |
+|---|---|---|
+| 1. Persist credentials | `EcrExampleSettings`: `Environment`, `WebServiceSecureHashKey` (DPAPI); `Terminal`: serial, `MerchantId`, `TerminalId`, mode `WebService` | — |
+| 2. Map + validate | `SelectedTerminalConfig.Resolve` → `EcrLink.WebService(merchantId, terminalId)`, `EcrConfig` with environment + Web Service key | `EcrSessions.Plan` — no Hub call |
+| 3. Gate UI | Config card / `CanStart` require `IsReady` | Plan issues listed above |
+| 4. Open + operate | `TransactionEngine.RunAsync` re-resolves, then | `EcrSessions.Open` → `SaleAsync` / `VoidAsync` / `RefundAsync` / `InquireAsync` / `InquireByReferenceAsync` |
+
+What the plan must satisfy before `IsReady`:
+
+- Mode is `WebService` and `IsSupportedInExample` (true in this sample).
+- Merchant ID and terminal ID non-empty and numeric.
+- Web Service key present after sanitization (even-length hex, ≥ 16 chars) — **not** the
+  Wi‑Fi/LAN key from `WifiSecureHashKey`.
+- `Environment` is `SIT`, `UAT`, or `PROD` (Hub base URL is SDK-internal).
+
+Differences from LAN at run time (engine / outcomes, not init):
+
+- `ProbeReachabilityAsync` returns `null` — the engine skips the probe.
+- A lost money-moving answer arrives as `Declined` with
+  `NextStep.InquireByMerchantReference` (often `NO_RESPONSE`), classified as unknown — never
+  retry; offer inquire-by-reference.
+- `ReceiptAsync` is unavailable; the result dialog says so.
+- Inquiry by reference posts `/Ecr/Inquiry` with a blank date (no synthetic “today”).
+
+SDK checklist (Hub URLs, TLS, signing field `secureHashValue`):
+[integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
 
 **The config card.** [`TerminalConfigCard.xaml`](../src/AmwalECR.Example/Views/TerminalConfigCard.xaml)
 takes a `SelectedTerminalConfig` as its `DataContext` and shows mode, transport, connection, the

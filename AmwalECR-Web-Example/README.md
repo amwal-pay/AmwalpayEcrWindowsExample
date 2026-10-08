@@ -93,7 +93,36 @@ python3 -u ../Windows-Native-Example/tools/fake_pos_server_signed.py \
 
 Flags worth trying: `--decline 51`, `--partial`, `--delay 8` (then **Cancel**, or reload the
 page), `--drop-sale`, `--drop-sale --drop-first-inquiry` (an unknown outcome you resolve
-with **Inquire by reference**), `--not-found`. Web Service terminals need the real backend.
+with **Inquire by reference**), `--not-found`.
+
+### Web Service initialization
+
+Web Service (`ecrMode: 4`) talks to the Amwal Hub over HTTPS — not to a terminal IP. There is
+no fake Hub; you need real credentials from Amwal / TMS.
+
+| You supply | In this sample |
+|---|---|
+| Environment (`SIT` / `UAT` / `PROD`) | **Settings** → environment |
+| **Web Service** secure hash key (not the Wi‑Fi key) | **Settings** → *Web Service secure hash key* → **Save key** (write-only; API never echoes it) |
+| Serial, merchant ID, terminal ID (numeric) | **Terminals** → **Add terminal**, mode **Web Service** |
+
+Then:
+
+1. Save environment and the Web Service key (`EcrConfig.IsValidSecureHashKey` — even-length
+   hex, ≥ 16 chars). An invalid key is refused and nothing is stored.
+2. Add a Web Service terminal (serial + merchant/terminal IDs; no IP/port).
+3. **Transaction** → select it. The config card must report ready (`GET /api/terminals/{serial}/config`
+   → `isReady: true`). Typical issues: missing/non-numeric IDs, or
+   `"Web Service secure hash key is not configured"`.
+4. Start a sale. Core runs `SelectedTerminalConfig.Resolve` → `EcrSessions.Plan` →
+   `EcrSessions.Open` → `SaleAsync` on the server; the page only polls. No reachability probe
+   on Web Service. Keep the merchant reference so **Inquire by reference** can resolve a lost
+   answer (`NO_RESPONSE` / `NextStep.InquireByMerchantReference`).
+
+Hub URLs come from the SDK environment; this sample does not configure them. Same steps in the
+WPF UI: [Windows-Native-Example README](../Windows-Native-Example/README.md#web-service-initialization).
+SDK detail:
+[integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
 
 ## Parity with the WPF sample
 

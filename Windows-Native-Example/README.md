@@ -57,6 +57,45 @@ USB cable and Bluetooth terminals can be added so a terminal list matches the An
 one, but their config card reads "*X* is not supported in this sample" and Start stays
 disabled.
 
+## Web Service initialization
+
+Use this when TMS set `ecrMode: 4`. The till talks to the Amwal Hub over HTTPS — not to the
+terminal's Wi‑Fi IP. There is no fake Hub; you need real credentials from Amwal.
+
+### What to collect
+
+| Item | Notes |
+|---|---|
+| Terminal serial | As registered in TMS |
+| Merchant ID + terminal ID | Numeric strings |
+| Environment | `SIT`, `UAT`, or `PROD` (SDK picks the Hub base URL) |
+| **Web Service** secure hash key | Even-length hex, ≥ 16 characters — **not** the Wi‑Fi/LAN key |
+
+### In the app
+
+1. **Terminals** screen → set **Environment** and paste the *Web Service secure hash key*
+   (keys are trimmed, checked with `EcrConfig.IsValidSecureHashKey`, and saved encrypted).
+2. **Add terminal** → mode **Web Service**, name, serial, merchant ID, terminal ID.
+   Leave IP/port blank (they are not used).
+3. **Transaction** → select that terminal. The config card must be ready before **Start**
+   enables:
+   - Transport: `HTTPS Web Service (JSON HMAC)`
+   - Connection: e.g. `UAT · merchant 13593 · terminal 101311`
+   - Key: `Web Service secure hash key` / `configured (… hex chars)`
+4. If the card lists issues, fix them first — common ones:
+   - `Merchant ID is required for Web Service` / `Terminal ID is required…`
+   - `Merchant ID must be numeric` / `Terminal ID must be numeric`
+   - `Web Service secure hash key is not configured`
+   - `Secure hash key must be an even-length hex string of at least 16 characters`
+5. Run a sale (optionally with a merchant reference). The Hub is contacted only on
+   **Start** — `SelectedTerminalConfig.Resolve` → `EcrSessions.Plan` → `EcrSessions.Open` →
+   `SaleAsync`. There is no reachability probe on Web Service.
+
+On a lost answer the result is **Outcome unknown** (often a `Declined` with
+`NextStep.InquireByMerchantReference` / `NO_RESPONSE`); use **Inquire by reference**, never
+retry the sale. Full SDK checklist:
+[AmwalPay.Ecr integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
+
 ## Running it
 
 Requires **Windows 10 1809+ or Windows 11** and the **.NET 8 SDK**, plus the SDK source checked
@@ -281,8 +320,8 @@ Flags, for the outcomes worth seeing:
 | `--drop-sale --drop-first-inquiry` | As above, and the automatic inquiry is dropped too: **Outcome unknown**, then **Inquire by reference** finds it |
 | a different key in the app | *"The answer was not signed with this terminal's key"* — an unknown outcome |
 
-Web Service needs the real backend (SIT/UAT/PROD, merchant and terminal IDs, and the Web
-Service key); there is no fake for it.
+Web Service needs the real backend — see [Web Service initialization](#web-service-initialization);
+there is no fake Hub for it.
 
 ## Building and testing
 

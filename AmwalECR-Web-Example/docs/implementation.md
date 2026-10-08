@@ -17,6 +17,7 @@ curl session in [section 5](#5-the-api)). Anything I could not run is marked *no
 Contents: [1 Goals and architecture](#1-goals-and-architecture) ·
 [2 Hosting and composition](#2-hosting-and-composition) ·
 [3 Secrets at rest](#3-secrets-at-rest) ·
+[3a Web Service initialization](#3a-web-service-initialization) ·
 [4 Transactions run on the server](#4-the-central-design-transactions-run-on-the-server) ·
 [5 The API](#5-the-api) · [6 Validation](#6-validation) · [7 Security model](#7-security-model) ·
 [8 Front end](#8-front-end) · [9 Logging](#9-logging) · [10 Tests and tools](#10-tests-and-tools) ·
@@ -208,6 +209,43 @@ use it), `PUT /api/settings/keys/{kind}` accepts a value, `DELETE` clears it, an
 Replace/Clear instead of Show/Hide. The typed value is wiped from the input the moment the
 server has it. The SDK also never logs a key value, only that one is "configured" (a test
 pins that).
+
+---
+
+## 3a. Web Service initialization
+
+Operator steps: [README — Web Service initialization](../README.md#web-service-initialization).
+This sample does not re-implement init; it exposes Core's path over HTTP.
+
+| Step | HTTP / UI | Core / SDK |
+|---|---|---|
+| 1. Environment + Web Service key | `PUT /api/settings/environment` with `{ "environment": "UAT" }`, `PUT /api/settings/keys/webService` with `{ "value": "…" }` — write-only; invalid hex refused with `422` | `EcrExampleSettings.Environment`, `WebServiceSecureHashKey` |
+| 2. Register terminal | `POST /api/terminals` with `ecrMode: 4`, `serialNumber`, `merchantId`, `terminalId` (numeric; no IP/port) | `TerminalRepository` + `TerminalValidator` |
+| 3. Confirm plan ready | `GET /api/terminals/{serial}/config` → `isReady: true`, transport `HTTPS Web Service (JSON HMAC)`, issues empty | `SelectedTerminalConfig.Resolve` → `EcrSessions.Plan` (no Hub call) |
+| 4. First operation | `POST /api/transactions` → `202`, then poll | `TransactionEngine` → `EcrSessions.Open` → `SaleAsync` / … |
+
+Typical `issues` when `isReady` is false (same strings as WPF):
+
+- `Merchant ID is required for Web Service` / `Terminal ID is required…`
+- `Merchant ID must be numeric` / `Terminal ID must be numeric`
+- `Web Service secure hash key is not configured`
+- `Secure hash key must be an even-length hex string of at least 16 characters`
+
+Do **not** put the Wi‑Fi/LAN key in the Web Service slot — Hub auth will fail. Hub base URLs
+are resolved by the SDK from `SIT` / `UAT` / `PROD`; this app never sets them.
+
+At run time (after init): no probe; a lost money-moving answer is classified as unknown
+(`NextStep.InquireByMerchantReference`); receipt is unsupported; by-reference inquiry uses a
+blank date. Full SDK checklist:
+[integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
+
+Example config check after keys and a Web Service terminal exist:
+
+```bash
+# after PUT keys/webService and POST terminals with ecrMode 4
+curl -s $B/api/terminals/P653200008251/config
+# → isReady true, keyLabel "Web Service secure hash key", issues []
+```
 
 ---
 
@@ -554,6 +592,12 @@ $ j -X PUT $B/api/settings/keys/wifi -d '{"value":"xyz"}'
 $ j -X PUT $B/api/settings/keys/wifi -d '{"value":"0123456789ABCDEF0123456789ABCDEF"}'
   -> 200 {"environment":"SIT","wifi":{"label":"Wi-Fi/LAN secure hash key","configured":true},
           "webService":{"label":"Web Service secure hash key","configured":false},"notice":null}     # no key echoed
+
+# Web Service init (real Hub — skip if you only have the fake LAN terminal):
+# $ j -X PUT $B/api/settings/environment -d '{"environment":"UAT"}'
+# $ j -X PUT $B/api/settings/keys/webService -d '{"value":"<WEB_SERVICE_HEX_KEY>"}'
+# $ j -X POST $B/api/terminals -d '{"name":"Hub terminal","serialNumber":"P653200008251","ecrMode":4,"merchantId":"13593","terminalId":"101311"}'
+# $ curl -s $B/api/terminals/P653200008251/config   # isReady true before first sale
 
 $ j -X POST $B/api/transactions -d '{"terminalSerial":"TW1234567890","type":"Sale","amountDigits":"5"}'
   -> 422 {"errors":{"amount":"minimum amount allowed is 0.010"},"message":null}
