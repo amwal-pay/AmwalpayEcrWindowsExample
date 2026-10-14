@@ -2,9 +2,8 @@
 
 WPF only runs on Windows, and Windows containers cannot show a window, so a VM is
 the way to see the WPF sample on a Mac. These scripts do everything except installing
-Windows itself. (Background on the sample: [../../README.md](../../README.md),
-[../../docs/implementation.md](../../docs/implementation.md); the repository overview is the
-[umbrella README](../../../README.md). The web sample needs no VM: it runs on the Mac.)
+Windows itself. (About the sample: [../../README.md](../../README.md). The web sample needs no
+VM: it runs on the Mac.)
 
 Needs on the Mac: Python 3, `zip`, `rsync`, and the two repositories checked out as siblings
 (`AmwalECR-Windows` for the SDK and `AmwalECR-Windows-Example` for the samples, exactly those
@@ -33,8 +32,8 @@ AmwalECR-Windows-Example/Windows-Native-Example/tools/vm/prepare-on-mac.sh
 
 (Run it from the folder that holds both repositories, or give the full path; the script finds its
 own location.) It zips the SDK checkout and the samples repository — both samples, without `bin/`,
-`obj/`, `dist/` and similar — keeping them as siblings so the sample's default `project` SDK mode
-resolves in the VM as on a developer machine. It serves the zip on port 8000, starts the signed
+`obj/`, `dist/` and similar — keeping them as siblings so `-p:EcrSdkDependency=project` resolves
+the SDK in the VM as on a developer machine. It serves the zip on port 8000, starts the signed
 fake terminal on port 9100 and prints the commands to paste into the VM.
 If macOS asks whether Python may accept incoming connections, choose **Allow**.
 Options: `ECR_KEY=<hex>` (default `0123456789ABCDEF0123456789ABCDEF`), `HTTP_PORT`, `ECR_PORT`.
@@ -54,7 +53,14 @@ It installs the .NET 8 SDK with winget if missing, downloads and extracts the zi
 `C:\amwal` (giving `C:\amwal\AmwalECR-Windows` and `C:\amwal\AmwalECR-Windows-Example`), and
 runs `dotnet run --project src\AmwalECR.Example -c Release` from
 `C:\amwal\AmwalECR-Windows-Example\Windows-Native-Example`. The first run compiles, so allow a
-minute. In the app:
+minute.
+
+> **Until `AmwalPay.Ecr` 1.0.2 is on nuget.org** the script's `dotnet run` (no SDK switch) uses
+> the NuGet default and the build fails. After the script has extracted the files, run the same
+> command yourself with the switch:
+> `dotnet run --project src\AmwalECR.Example -c Release -p:EcrSdkDependency=project`.
+
+In the app:
 
 1. **Terminals** (top right) -> **Add terminal**: mode Wi-Fi, IP `<MAC-IP>`, port `9100` (or
    the `ECR_PORT` you used), any name and serial.

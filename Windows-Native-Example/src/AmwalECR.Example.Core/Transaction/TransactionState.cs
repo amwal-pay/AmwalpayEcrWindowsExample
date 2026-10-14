@@ -69,6 +69,31 @@ public abstract record TransactionState
     public bool IsResult => this is Completed or Inquired or Failed;
 }
 
+/// <summary>
+/// Live countdown for an in-flight ECR operation (sale, void, inquiry, …).
+/// <para>
+/// <see cref="RemainingSeconds"/> counts down from <see cref="TotalSeconds"/>
+/// (the configured response timeout). A null timer means nothing is running.
+/// </para>
+/// </summary>
+public sealed record OperationTimer(int RemainingSeconds, int TotalSeconds)
+{
+    public float Progress =>
+        TotalSeconds <= 0 ? 0f : Math.Clamp(RemainingSeconds / (float)TotalSeconds, 0f, 1f);
+
+    /// <summary><c>m:ss</c> for the remaining wait.</summary>
+    public string Label
+    {
+        get
+        {
+            var safe = Math.Max(0, RemainingSeconds);
+            return $"{safe / 60}:{safe % 60:D2}";
+        }
+    }
+
+    public string Caption => $"remaining of {TotalSeconds} s timeout";
+}
+
 /// <summary>One operation, as the screen asks for it.</summary>
 public sealed record TransactionRequest
 {

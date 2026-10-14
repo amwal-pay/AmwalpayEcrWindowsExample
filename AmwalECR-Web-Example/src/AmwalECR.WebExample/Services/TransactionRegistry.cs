@@ -10,24 +10,39 @@ namespace AmwalECR.WebExample.Services;
 /// </summary>
 /// <param name="UsesWebService">Whether the terminal is reached over the Web Service; decides receipt support.</param>
 /// <param name="Version">Bumped on every change, so a poller can tell whether anything moved.</param>
+/// <param name="TimeoutSeconds">The configured response budget — 130 s on Web Service, 120 s on Wi‑Fi.</param>
+/// <param name="RemainingSeconds">
+/// What is left of it while the run is busy (counted on the server, so the page needs
+/// no clock of its own); null once the run has finished.
+/// </param>
 public sealed record TransactionSnapshot(
     string Id,
     string TerminalSerial,
     TransactionRequest Request,
     bool UsesWebService,
     TransactionState State,
-    long Version);
+    long Version,
+    int TimeoutSeconds = 120,
+    int? RemainingSeconds = null);
 
 /// <summary>One operator flow: the state machine the WPF transaction screen holds, kept on the server.</summary>
 internal sealed class TransactionRun
 {
-    public TransactionRun(string id, TransactionRequest request, bool usesWebService, DateTimeOffset now)
+    public TransactionRun(
+        string id, TransactionRequest request, bool usesWebService, DateTimeOffset now, int timeoutSeconds = 120)
     {
         Id = id;
         Request = request;
         UsesWebService = usesWebService;
-        Started = Updated = now;
+        Started = Updated = BusySince = now;
+        TimeoutSeconds = Math.Max(1, timeoutSeconds);
     }
+
+    /// <summary>The configured response timeout for the terminal this run uses.</summary>
+    public int TimeoutSeconds { get; }
+
+    /// <summary>When the current wait began — the countdown restarts for each follow-up.</summary>
+    public DateTimeOffset BusySince { get; set; }
 
     public string Id { get; }
 
@@ -48,7 +63,19 @@ internal sealed class TransactionRun
 
     public string TerminalSerial => Request.TerminalSerial;
 
-    public TransactionSnapshot Snapshot() => new(Id, TerminalSerial, Request, UsesWebService, State, Version);
+    public TransactionSnapshot Snapshot(DateTimeOffset now) => new(
+        Id,
+        TerminalSerial,
+        Request,
+        UsesWebService,
+        State,
+        Version,
+        TimeoutSeconds,
+        // A receipt fetch leaves the state at "inquired" with FetchingReceipt set, and is a
+        // wait of its own with its own timeout.
+        State.IsBusy || State is TransactionState.Inquired { FetchingReceipt: true }
+            ? Math.Max(0, TimeoutSeconds - (int)(now - BusySince).TotalSeconds)
+            : null);
 }
 
 public abstract record StartResult
@@ -78,6 +105,19 @@ public abstract record FollowUp
 
     /// <summary>Another transaction is running on the terminal.</summary>
     public sealed record Busy(string ExistingId) : FollowUp;
+}
+
+public abstract record CloseReceiptOutcome
+{
+    private CloseReceiptOutcome()
+    {
+    }
+
+    public sealed record Done(TransactionSnapshot Run, string Message) : CloseReceiptOutcome;
+
+    public sealed record NotFound : CloseReceiptOutcome;
+
+    public sealed record NotApplicable(string? Message = null) : CloseReceiptOutcome;
 }
 
 public sealed class TransactionRegistryOptions
@@ -122,17 +162,18 @@ public sealed class TransactionRegistry
         _time = time;
     }
 
-    public StartResult Start(TransactionRequest request, bool usesWebService)
+    public StartResult Start(TransactionRequest request, bool usesWebService, int responseTimeoutSeconds = 120)
     {
         lock (_gate)
         {
             Sweep();
             if (_runningBySerial.TryGetValue(request.TerminalSerial, out var existing)) return new StartResult.Busy(existing);
 
-            var run = new TransactionRun(Guid.NewGuid().ToString("N"), request, usesWebService, _time.GetUtcNow());
+            var run = new TransactionRun(
+                Guid.NewGuid().ToString("N"), request, usesWebService, _time.GetUtcNow(), responseTimeoutSeconds);
             _runs[run.Id] = run;
             Begin(run, request);
-            return new StartResult.Started(run.Snapshot());
+            return new StartResult.Started(run.Snapshot(_time.GetUtcNow()));
         }
     }
 
@@ -141,7 +182,7 @@ public sealed class TransactionRegistry
         lock (_gate)
         {
             Sweep();
-            return _runs.GetValueOrDefault(id)?.Snapshot();
+            return _runs.GetValueOrDefault(id)?.Snapshot(_time.GetUtcNow());
         }
     }
 
@@ -151,7 +192,7 @@ public sealed class TransactionRegistry
         lock (_gate)
         {
             Sweep();
-            return _runs.Values.OrderByDescending(r => r.Started).Select(r => r.Snapshot()).ToList();
+            return _runs.Values.OrderByDescending(r => r.Started).Select(r => r.Snapshot(_time.GetUtcNow())).ToList();
         }
     }
 
@@ -197,12 +238,54 @@ public sealed class TransactionRegistry
                 TerminalSerial = run.TerminalSerial,
                 Amount = null,
                 OriginalReference = reference,
-                MerchantReference = reference,
+                // Blank so the SDK mints this inquiry's own merchantReference.
+                MerchantReference = "",
             };
             run.Request = inquiry;
             Begin(run, inquiry);
-            return new FollowUp.Started(run.Snapshot());
+            return new FollowUp.Started(run.Snapshot(_time.GetUtcNow()));
         }
+    }
+
+    /// <summary>
+    /// Asks the terminal to put its receipt away. Does not change the run's state —
+    /// the result dialog stays open.
+    /// </summary>
+    public async Task<CloseReceiptOutcome> CloseReceiptAsync(string id)
+    {
+        string serial;
+        string originalMerchantReference;
+        TransactionSnapshot snapshot;
+        lock (_gate)
+        {
+            if (!_runs.TryGetValue(id, out var run)) return new CloseReceiptOutcome.NotFound();
+            if (run.State is not TransactionState.Completed completed)
+            {
+                return new CloseReceiptOutcome.NotApplicable();
+            }
+
+            serial = run.TerminalSerial;
+            originalMerchantReference = "";
+            if (run.UsesWebService
+                && (completed.Type == EcrTransactionType.Sale
+                    || completed.Type == EcrTransactionType.Void
+                    || completed.Type == EcrTransactionType.Refund))
+            {
+                originalMerchantReference = completed.Result.MerchantReference;
+            }
+
+            if (run.UsesWebService && string.IsNullOrWhiteSpace(originalMerchantReference))
+            {
+                return new CloseReceiptOutcome.NotApplicable(
+                    "Close receipt needs the sale / void / refund reference");
+            }
+
+            snapshot = run.Snapshot(_time.GetUtcNow());
+        }
+
+        var message = await _engine.CloseTerminalReceiptAsync(serial, originalMerchantReference)
+            .ConfigureAwait(false);
+        return new CloseReceiptOutcome.Done(snapshot, message);
     }
 
     /// <summary>Fetches the e-receipt of an inquired transaction (Wi‑Fi only).</summary>
@@ -220,8 +303,9 @@ public sealed class TransactionRegistry
             }
 
             current = inquired;
+            run.BusySince = _time.GetUtcNow();
             Update(run, current with { FetchingReceipt = true });
-            snapshot = run.Snapshot();
+            snapshot = run.Snapshot(_time.GetUtcNow());
         }
 
         // Read-only, so it may outlive the request that asked for it.
@@ -268,6 +352,7 @@ public sealed class TransactionRegistry
         var cts = new CancellationTokenSource();
         run.Cts = cts;
         _runningBySerial[run.TerminalSerial] = run.Id;
+        run.BusySince = _time.GetUtcNow();
         Update(run, new TransactionState.Checking());
 
         _ = Task.Run(async () =>

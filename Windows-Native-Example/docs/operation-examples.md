@@ -1,8 +1,11 @@
 # Full examples — Wi‑Fi and Web Service
 
-Copy-paste oriented guide for integrators reading these samples. Each subsection is a
-complete flow for **one transport**. Same structure as the Android ECR-simulator and the
-SDK’s [integration guide §5](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#5-full-examples--wifi-and-web-service).
+Copy-paste guide for integrators reading these samples. Each section is a complete flow for
+**one transport**. The SDK's own cookbook (same operations, no sample types) is its
+[integration guide §5a](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#5a-copy-paste-examples-wi-fi-and-web-service).
+
+The Close receipt call (section 14) exists only in SDK 1.0.2; build the samples with
+`-p:EcrSdkDependency=project` until it is published.
 
 **Keys live in settings** (two different Amwal secrets). **Terminal records hold addresses
 only** — no secure-hash field on Add/Edit terminal. Both the WPF and web samples share
@@ -14,6 +17,7 @@ this Core path (`SelectedTerminalConfig` → `EcrSessions.Plan` → `EcrSessions
 | Terminal form | name, serial, IP, port | name, serial, merchant ID, terminal ID |
 | Client | `EcrTerminal` / LAN session | `EcrWebServiceTerminal` / Hub session |
 | Probe / e-receipt | Yes | No |
+| Default response timeout | 120 s | 130 s (the plan raises the 120 s default) |
 
 ```csharp
 using System.Diagnostics;
@@ -54,8 +58,8 @@ EcrOpenedSession session = EcrSessions.Open(
 // TransactionEngine.RunAsync does the same, then SaleAsync / VoidAsync / …
 ```
 
-The typed clients below are equivalent when you are not using `Open` — useful when
-porting into your own till without the sample’s engine.
+The typed clients below (`EcrSessions.LanTerminal` / `WebServiceTerminal`) are equivalent when
+you are not using `Open` — useful when porting into your own till without the sample's engine.
 
 ---
 
@@ -129,10 +133,6 @@ async Task WifiSaleAsync(EcrTerminal wifi, decimal amount, string orderNumber)
             CompleteSale(a);   // a.Amount, a.Rrn, a.AuthCode, a.MaskedPan
             break;
 
-        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
-            HandleUnknownOutcome(orderNumber, d.Reason);   // inquire; do not retry
-            break;
-
         case EcrResult.Declined d:
             screen.Show(d.Reason);
             break;
@@ -164,6 +164,15 @@ var state = await engine.RunAsync(
 // TransactionOutcomes classifies Approved / Declined / Failed → screen state
 ```
 
+**Close receipt** — from the cashier's Close receipt button, not automatically and not on
+dialog dismiss (see [section 14](#14-close-receipt-both-transports)):
+
+```csharp
+// after the sale was Approved
+EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
+```
+
+
 ---
 
 ## 3. Wi‑Fi / LAN — void
@@ -190,6 +199,15 @@ async Task WifiVoidAsync(EcrTerminal wifi, string receiptNumber)
 await wifi.VoidAsync(receiptNumber: "215", originalTerminalId: "31629");
 ```
 
+**Close receipt** — from the cashier's Close receipt button, not automatically and not on
+dialog dismiss (see [section 14](#14-close-receipt-both-transports)):
+
+```csharp
+// after the void was Approved
+EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
+```
+
+
 ---
 
 ## 4. Wi‑Fi / LAN — refund
@@ -213,6 +231,15 @@ async Task WifiRefundAsync(
     }
 }
 ```
+
+**Close receipt** — from the cashier's Close receipt button, not automatically and not on
+dialog dismiss (see [section 14](#14-close-receipt-both-transports)):
+
+```csharp
+// after the refund was Approved
+EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
+```
+
 
 ---
 
@@ -357,26 +384,33 @@ async Task WebServiceSaleAsync(
             CompleteSale(a);
             break;
 
-        // Transport / unknown — NOT a refusal. Inquire; do not resend.
-        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
-            HandleUnknownOutcome(orderNumber, d.Reason);   // often NO_RESPONSE
-            break;
-
         case EcrResult.Declined d:
             screen.Show(d.Reason);
             break;
 
         case EcrResult.Failed f:
-            // Non-numeric merchant/terminal IDs (nothing was sent)
+            // Timeout / lost connection (outcome unknown: inquire, do not resend),
+            // or non-numeric merchant/terminal IDs (nothing was sent).
+            // Recovered is always null on Web Service.
             HandleUnknownOutcome(orderNumber, f.Failure.Message);
             break;
     }
 }
 ```
 
-`TransactionOutcomes` in Core treats `NextStep.InquireByMerchantReference` (and Web
-Service `NO_RESPONSE`) as **Outcome unknown** with **Inquire by reference** — never a
-retry button.
+The SDK reports a lost Web Service answer as `Failed`. `TransactionOutcomes` in Core
+shows it as **Outcome unknown** with **Inquire by reference** — never a retry button — and
+treats a `Declined` carrying `NO_RESPONSE` or `NextStep.InquireByMerchantReference` the
+same way, as a defensive fallback.
+
+**Close receipt** — from the cashier's Close receipt button, not automatically and not on
+dialog dismiss (see [section 14](#14-close-receipt-both-transports)):
+
+```csharp
+// after the sale was Approved: orderNumber is the reference the sale was sent with
+EcrReceiptClosed closed = await hub.CloseReceiptAsync(originalMerchantReference: orderNumber);
+```
+
 
 ---
 
@@ -390,9 +424,6 @@ async Task WebServiceVoidAsync(EcrWebServiceTerminal hub, string receiptNumber)
         case EcrResult.Approved a:
             RecordVoid(a.Rrn, a.Amount);
             break;
-        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
-            HandleUnknownOutcome("", d.Reason);
-            break;
         case EcrResult.Declined d:
             screen.Show(d.Reason);
             break;
@@ -402,6 +433,15 @@ async Task WebServiceVoidAsync(EcrWebServiceTerminal hub, string receiptNumber)
     }
 }
 ```
+
+**Close receipt** — from the cashier's Close receipt button, not automatically and not on
+dialog dismiss (see [section 14](#14-close-receipt-both-transports)):
+
+```csharp
+// after the void was Approved: the result carries the reference the SDK generated
+EcrReceiptClosed closed = await hub.CloseReceiptAsync(originalMerchantReference: approved.MerchantReference);
+```
+
 
 ---
 
@@ -420,13 +460,20 @@ async Task WebServiceRefundAsync(
         transactionDate: transactionDate))
     {
         case EcrResult.Approved a: CompleteRefund(a); break;
-        case EcrResult.Declined d when d.NextStep == NextStep.InquireByMerchantReference:
-            HandleUnknownOutcome("", d.Reason); break;
         case EcrResult.Declined d: screen.Show(d.Reason); break;
         case EcrResult.Failed f:   HandleUnknownOutcome("", f.Failure.Message); break;
     }
 }
 ```
+
+**Close receipt** — from the cashier's Close receipt button, not automatically and not on
+dialog dismiss (see [section 14](#14-close-receipt-both-transports)):
+
+```csharp
+// after the refund was Approved
+EcrReceiptClosed closed = await hub.CloseReceiptAsync(originalMerchantReference: approved.MerchantReference);
+```
+
 
 ---
 
@@ -479,11 +526,40 @@ async Task WebServiceInquireByReferenceAsync(
 
 ---
 
-## 14. What Web Service does not support (in these samples / SDK 1.0.0)
+## 14. Close receipt (both transports)
+
+Asks the terminal to put its receipt away. Call it from the till's **Close receipt** action
+when the cashier is finished with the result — not as a side effect of dismissing the result
+dialog. Wi‑Fi sends `CLOSE_RECEIPT`; Web Service posts `/Ecr/closeReceipt` and **needs** the
+sale / void / refund merchant reference as `originalMerchantReference`.
+
+```csharp
+// Wi‑Fi: no reference needed
+EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
+
+// Web Service: the reference of the sale / void / refund that just finished
+EcrReceiptClosed closed = await hub.CloseReceiptAsync(originalMerchantReference: orderNumber);
+
+switch (closed)
+{
+    case EcrReceiptClosed.Idle:             screen.Show("Terminal is back on its idle screen"); break;
+    case EcrReceiptClosed.Refused refused:  screen.Show($"Terminal refused: {refused.Reason}"); break;  // too old to know it
+    case EcrReceiptClosed.Failed failed:    screen.Show(failed.Failure.Message); break;
+}
+```
+
+Through a session (`EcrOpenedSession.CloseReceiptAsync(merchantReference, originalMerchantReference)`)
+the same call serves both transports; `TransactionEngine.CloseTerminalReceiptAsync` wraps it and
+returns the message to show. The sample offers the button only on a completed sale, void or
+refund; on Web Service it takes the reference from the result.
+
+---
+
+## 15. What Web Service does not support
 
 | Operation | Wi‑Fi | Web Service |
 |---|---|---|
-| `ReceiptAsync` / e-receipt QR | Yes | **No** — UI says so; engine returns `EcrReceipt.Unavailable` |
+| `ReceiptAsync` / e-receipt QR | Yes | **No** — UI says so; the session returns `EcrReceipt.Unavailable` |
 | Reachability probe | Yes | **No** — `ProbeReachabilityAsync` is `null`, skipped |
 | `originalTerminalId` (other till) | Yes | Ignored on an opened Web Service session |
 | Auto-inquire after lost sale | Yes (SDK default) | **No** — offer **Inquire by reference** |
@@ -494,6 +570,4 @@ async Task WebServiceInquireByReferenceAsync(
 
 - Sample architecture: [implementation.md](implementation.md) (WPF / Core)
 - Web host: [../../AmwalECR-Web-Example/docs/implementation.md](../../AmwalECR-Web-Example/docs/implementation.md)
-- Operator steps: [../README.md](../README.md#setup-structure-same-as-android-ecr-simulator)
-- SDK cookbook (same operations, no sample types):
-  [AmwalPay.Ecr integration guide §5](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#5-full-examples--wifi-and-web-service)
+- Operator steps: [../README.md](../README.md#configure-it)

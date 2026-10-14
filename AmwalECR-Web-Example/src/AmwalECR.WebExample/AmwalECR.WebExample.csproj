@@ -9,7 +9,7 @@
     Core also owns the ECR SDK switch (project | nuget), so there is nothing to
     decide here. A global property reaches Core through the ProjectReference:
 
-      dotnet run -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
+      dotnet run -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.1
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

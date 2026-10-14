@@ -69,6 +69,7 @@ public class TransactionOutcomesTests
         Assert.True(state.RecoveredFromFailure);
         Assert.Equal(EcrTransactionType.Inquiry, state.Request.Type);
         Assert.Equal("REF1", state.Request.OriginalReference);
+        Assert.Equal("", state.Request.MerchantReference);
         Assert.Null(state.Request.Amount);
     }
 

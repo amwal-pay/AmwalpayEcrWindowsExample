@@ -45,6 +45,20 @@ public static class TransactionEndpoints
                 _ => Results.Conflict(new ErrorBody("No receipt can be requested for this transaction")),
             });
 
+        group.MapPost("/{id}/close-receipt", async (string id, TransactionRegistry registry) =>
+            await registry.CloseReceiptAsync(id) switch
+            {
+                CloseReceiptOutcome.Done done => Results.Ok(new
+                {
+                    message = done.Message,
+                    transaction = TransactionView.From(done.Run),
+                }),
+                CloseReceiptOutcome.NotFound => NotFound(),
+                CloseReceiptOutcome.NotApplicable na => Results.Conflict(new ErrorBody(
+                    na.Message ?? "Close receipt is not available for this transaction")),
+                _ => Results.Conflict(new ErrorBody("Close receipt is not available for this transaction")),
+            });
+
         // "The operator has read the result": frees the page to start the next one.
         group.MapDelete("/{id}", (string id, TransactionRegistry registry) =>
             registry.Acknowledge(id)
@@ -73,7 +87,10 @@ public static class TransactionEndpoints
         var (validated, request) = form.Validated(terminal.SerialNumber);
         if (request == null) return Results.UnprocessableEntity(new FieldErrors(ToDictionary(validated.Errors)));
 
-        return registry.Start(request, config.UsesWebService) switch
+        return registry.Start(
+            request,
+            config.UsesWebService,
+            Math.Max(1, (int)config.EcrConfig.ResponseTimeout.TotalSeconds)) switch
         {
             StartResult.Started started => Accepted(started.Run),
             StartResult.Busy busy => Results.Conflict(new ErrorBody("A transaction is already running on this terminal", busy.ExistingId)),

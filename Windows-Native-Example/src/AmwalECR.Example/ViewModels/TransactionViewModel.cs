@@ -23,6 +23,7 @@ public sealed partial class TransactionViewModel : ObservableObject
 
     private string? _selectedSerial;
     private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _countdownCts;
 
     public TransactionViewModel(
         TerminalRepository repository,
@@ -60,8 +61,13 @@ public sealed partial class TransactionViewModel : ObservableObject
         nameof(IsChecking),
         nameof(IsInProgress),
         nameof(CanStart),
+        nameof(CanCancel),
         nameof(StatusText))]
     private TransactionState _state = new TransactionState.Idle();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOperationTimer), nameof(CountdownLabel), nameof(CountdownCaption))]
+    private OperationTimer? _operationTimer;
 
     public bool HasTerminals => Terminals.Count != 0;
 
@@ -74,6 +80,15 @@ public sealed partial class TransactionViewModel : ObservableObject
     public bool IsChecking => State is TransactionState.Checking;
 
     public bool IsInProgress => State is TransactionState.InProgress;
+
+    public bool CanCancel =>
+        State.IsBusy || State is TransactionState.Inquired { FetchingReceipt: true };
+
+    public bool HasOperationTimer => OperationTimer != null;
+
+    public string CountdownLabel => OperationTimer?.Label ?? "";
+
+    public string CountdownCaption => OperationTimer?.Caption ?? "";
 
     public string StatusText => State is TransactionState.Checking ? "Checking the terminal…" : "Waiting for the POS terminal…";
 
@@ -144,6 +159,7 @@ public sealed partial class TransactionViewModel : ObservableObject
         if (State.IsBusy) return;
 
         State = new TransactionState.Checking();
+        StartOperationCountdown(ResponseTimeoutSeconds());
         var cts = new CancellationTokenSource();
         _cts = cts;
         _ = RunAsync(request, cts);
@@ -153,7 +169,18 @@ public sealed partial class TransactionViewModel : ObservableObject
     {
         try
         {
-            State = await _engine.RunAsync(request, progress => State = progress, cts.Token);
+            State = await _engine.RunAsync(
+                request,
+                progress =>
+                {
+                    State = progress;
+                    // Align budget if Web Service (130s) differs from the first guess.
+                    if (progress is TransactionState.InProgress)
+                    {
+                        StartOperationCountdown(ResponseTimeoutSeconds());
+                    }
+                },
+                cts.Token);
         }
         catch (Exception e)
         {
@@ -165,6 +192,7 @@ public sealed partial class TransactionViewModel : ObservableObject
         }
         finally
         {
+            ClearOperationCountdown();
             if (ReferenceEquals(_cts, cts)) _cts = null;
             cts.Dispose();
         }
@@ -181,6 +209,7 @@ public sealed partial class TransactionViewModel : ObservableObject
     /// <summary>The operator has read the result; back to idle and start the next one fresh.</summary>
     public void ResultAcknowledged()
     {
+        ClearOperationCountdown();
         if (State.IsResult) State = new TransactionState.Idle();
         Form.ClearAfterResult();
     }
@@ -201,8 +230,52 @@ public sealed partial class TransactionViewModel : ObservableObject
             TerminalSerial = serial,
             Amount = null,
             OriginalReference = reference,
-            MerchantReference = reference,
+            // Blank so the SDK mints this inquiry's own merchantReference;
+            // the looked-up value stays on OriginalReference only.
+            MerchantReference = "",
         });
+    }
+
+    /// <summary>
+    /// Wi‑Fi / USB / Web Service can ask the terminal to clear its receipt screen.
+    /// App-to-app is excluded: the payment app already waits for the operator to
+    /// close the receipt before answering.
+    /// </summary>
+    public bool CanCloseTerminalReceipt()
+    {
+        if (SelectedConfig == null) return false;
+        var mode = SelectedConfig.Mode;
+        return mode.IsIpBased() || mode.IsUsbCable() || mode == EcrMode.WebService;
+    }
+
+    /// <summary>
+    /// Tells the terminal the cashier has finished, so it can put its receipt away.
+    /// Separate from dismissing the result dialog.
+    /// </summary>
+    public async Task<string> CloseTerminalReceiptAsync()
+    {
+        var serial = SelectedConfig?.Terminal.SerialNumber;
+        if (serial == null || !CanCloseTerminalReceipt()) return "";
+
+        var webService = SelectedConfig?.UsesWebService == true;
+        var originalMerchantReference = "";
+        if (webService)
+        {
+            if (State is TransactionState.Completed completed
+                && (completed.Type == EcrTransactionType.Sale
+                    || completed.Type == EcrTransactionType.Void
+                    || completed.Type == EcrTransactionType.Refund))
+            {
+                originalMerchantReference = completed.Result.MerchantReference;
+            }
+
+            if (string.IsNullOrWhiteSpace(originalMerchantReference))
+            {
+                return "Close receipt needs the sale / void / refund reference";
+            }
+        }
+
+        return await _engine.CloseTerminalReceiptAsync(serial, originalMerchantReference);
     }
 
     public async Task RequestReceiptAsync()
@@ -210,15 +283,28 @@ public sealed partial class TransactionViewModel : ObservableObject
         if (State is not TransactionState.Inquired current || current.FetchingReceipt) return;
 
         State = current with { FetchingReceipt = true };
+        StartOperationCountdown(ResponseTimeoutSeconds());
+        var cts = new CancellationTokenSource();
+        _cts = cts;
 
         EcrReceipt receipt;
         try
         {
-            receipt = await _engine.FetchReceiptAsync(current, CancellationToken.None);
+            receipt = await _engine.FetchReceiptAsync(current, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            receipt = new EcrReceipt.Unavailable("", "Receipt fetch cancelled", "");
         }
         catch (Exception e)
         {
             receipt = new EcrReceipt.Unavailable("", e.Message, "");
+        }
+        finally
+        {
+            ClearOperationCountdown();
+            if (ReferenceEquals(_cts, cts)) _cts = null;
+            cts.Dispose();
         }
 
         // The operator may have closed the dialog while this was in flight.
@@ -226,5 +312,51 @@ public sealed partial class TransactionViewModel : ObservableObject
         {
             State = latest with { Receipt = receipt, FetchingReceipt = false };
         }
+    }
+
+    private int ResponseTimeoutSeconds()
+    {
+        var seconds = (int)(SelectedConfig?.EcrConfig.ResponseTimeout.TotalSeconds ?? 120);
+        return Math.Max(1, seconds);
+    }
+
+    private void StartOperationCountdown(int totalSeconds)
+    {
+        _countdownCts?.Cancel();
+        _countdownCts?.Dispose();
+        var total = Math.Max(1, totalSeconds);
+        var cts = new CancellationTokenSource();
+        _countdownCts = cts;
+        OperationTimer = new OperationTimer(total, total);
+        _ = TickCountdownAsync(total, cts);
+    }
+
+    private async Task TickCountdownAsync(int total, CancellationTokenSource cts)
+    {
+        try
+        {
+            var left = total;
+            while (!cts.IsCancellationRequested && left > 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cts.Token).ConfigureAwait(true);
+                left -= 1;
+                if (ReferenceEquals(_countdownCts, cts))
+                {
+                    OperationTimer = new OperationTimer(left, total);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Countdown stopped because the operation finished or was cancelled.
+        }
+    }
+
+    private void ClearOperationCountdown()
+    {
+        _countdownCts?.Cancel();
+        _countdownCts?.Dispose();
+        _countdownCts = null;
+        OperationTimer = null;
     }
 }

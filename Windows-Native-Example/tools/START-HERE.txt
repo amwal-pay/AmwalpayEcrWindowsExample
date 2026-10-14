@@ -9,13 +9,22 @@ Try it without a real terminal
 1. Install Python 3, then in this folder run:
      python tools\fake_pos_server_signed.py --key 0123456789ABCDEF0123456789ABCDEF --port 19100
    (flags: --decline 51, --partial, --delay 3, --drop-sale, --not-found)
-2. In the app: Terminals > Add
-     Serial: TW1234567890   Mode: Wi-Fi   IP: 127.0.0.1   Port: 19100
-3. Settings: set the Wi-Fi/LAN secure hash key to 0123456789ABCDEF0123456789ABCDEF
-4. Transaction: pick the terminal, Sale, key an amount, Pay.
+2. In the app open Terminals (top right):
+     Wi-Fi/LAN secure hash key: 0123456789ABCDEF0123456789ABCDEF
+     Add terminal: Serial TW1234567890, Mode Wi-Fi, IP 127.0.0.1, Port 19100
+3. Back on the main screen: pick the terminal, Sale, key an amount, Start transaction.
 
-Real terminal: register its IP (shown on its idle screen), port 9100, and the LAN
-signing key configured on that terminal.
+Real terminal: register its IP (shown on its idle screen), port 9100, and the Wi-Fi/LAN
+signing key configured on that terminal. Web Service terminals need Amwal credentials
+(environment, Web Service key, merchant ID, terminal ID); there is no fake for them.
+
+Good to know
+------------
+- Cancel only stops waiting. If the request already reached the terminal the payment may
+  still complete: the app then shows "Outcome unknown". Use Inquire by reference; never
+  repeat the sale.
+- Close receipt (on a finished sale, void or refund) clears the terminal's receipt screen.
+  Closing the result window does not.
 
 Your data is in %APPDATA%\AmwalECR-Example (terminals.json, and settings.dat
 encrypted with your Windows account).

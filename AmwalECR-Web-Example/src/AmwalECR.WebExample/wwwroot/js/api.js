@@ -56,6 +56,7 @@ export const api = {
   cancel: (id) => request('POST', `/api/transactions/${enc(id)}/cancel`),
   inquire: (id) => request('POST', `/api/transactions/${enc(id)}/inquire`),
   receipt: (id) => request('POST', `/api/transactions/${enc(id)}/receipt`),
+  closeReceipt: (id) => request('POST', `/api/transactions/${enc(id)}/close-receipt`),
   // keepalive: the acknowledgement must still go out if the page is closed or reloaded right after.
   acknowledge: (id) => request('DELETE', `/api/transactions/${enc(id)}`, undefined, { keepalive: true }),
 

@@ -1,542 +1,291 @@
-# Implementation guide — Windows (WPF) sample
+# Implementation guide - Windows (WPF) sample
 
-> Aligns with **`AmwalPay.Ecr` 1.0.0** and the Android ECR-simulator: inquiry by STAN or
-> merchant reference on LAN and Web Service; by-reference leaves the date blank.
+How the WPF sample is put together, why it is split the way it is, and where to change things.
+For a .NET developer copying the SDK integration into their own till, and for a maintainer.
 
-How the WPF sample is put together, why it is split the way it is, and where to change
-things. Written for two readers: a .NET developer copying the SDK integration into their
-own Windows till, and a maintainer extending this sample.
-
-Read [README.md](../README.md) first for what the app does and how to run it, and the
-[umbrella README](../../README.md) for the repository layout. For **copy-paste setup and
-every operation** (Wi‑Fi vs Web Service separately), see
-[operation-examples.md](operation-examples.md). The SDK itself (`AmwalPay.Ecr`) is
-documented in its own repository: `docs/integration-guide.md` (especially §5) and
-`docs/api-reference.md` in the SDK checkout.
-
-Everything below was checked against the code at the time of writing. Section (o) lists what
-was **not** checked, and the honest limits of this sample.
+Read the [README](../README.md) first for what the app does and how to run it. For copy-paste
+SDK calls see [operation-examples.md](operation-examples.md). The web sample reuses Core; its
+host-specific design is in [the web implementation guide](../../AmwalECR-Web-Example/docs/implementation.md).
 
 ## Contents
 
 - [a. Goals and layering](#a-goals-and-layering)
 - [b. Composition root and wiring](#b-composition-root-and-wiring)
 - [c. Terminals and settings persistence](#c-terminals-and-settings-persistence)
-- [d. From a terminal to an SDK call](#d-from-a-terminal-to-an-sdk-call) — includes [Web Service initialization](#web-service-initialization)
+- [d. From a terminal to an SDK call](#d-from-a-terminal-to-an-sdk-call)
 - [e. The form model](#e-the-form-model)
 - [f. Amount entry](#f-amount-entry)
-- [g. The transaction engine and state machine](#g-the-transaction-engine-and-state-machine)
-- [h. Result presentation and the receipt QR](#h-result-presentation-and-the-receipt-qr)
+- [g. The transaction engine, state machine and payment-safety rules](#g-the-transaction-engine-state-machine-and-payment-safety-rules)
+- [h. Result presentation, Close receipt and the receipt QR](#h-result-presentation-close-receipt-and-the-receipt-qr)
 - [i. Logging](#i-logging)
 - [j. Threading](#j-threading)
 - [k. XAML pitfalls](#k-xaml-pitfalls)
 - [l. Tests](#l-tests)
 - [m. Extension recipes](#m-extension-recipes)
-- [n. Building, publishing, running](#n-building-publishing-running)
-- [o. Known limitations](#o-known-limitations)
-- **[Full examples — Wi‑Fi and Web Service](operation-examples.md)** — setup + sale / void / refund / inquiry / receipt for each transport
+- [n. Known limitations](#n-known-limitations)
 
----
+(`Core/` below is `src/AmwalECR.Example.Core/`; `Views/`, `ViewModels/`, `Services/`, `Ui/` and
+`Themes/` are under `src/AmwalECR.Example/`.)
 
 ## a. Goals and layering
 
-Goals, in priority order:
-
-1. **Show the correct way to call the SDK from a till**, including the parts that are easy to
-   get wrong: plan before you open, probe before you send, never retry a payment, inquire by
-   reference when the answer is lost.
-2. **Behave like the Kotlin ECR simulator** (`ECR-simulator/app/` in the Android repo) — same
-   screens, form rules, wording, colours — so the two can be compared side by side. Where a
-   rule is copied on purpose the source comments say so (for example `AmountLimits` cites the
-   POS purchase form, `TransactionFormState` cites the SDK's own reference rule).
-3. **Be testable without Windows.** Everything that is not a window lives in a plain `net8.0`
+1. Show the correct way to call the SDK from a till: plan before you open, probe before you send,
+   never retry a payment, inquire by reference when the answer is lost.
+2. Keep the rules testable without Windows: everything that is not a window is in a plain `net8.0`
    library that `dotnet test` runs on macOS and Linux.
-4. **Be reusable.** The [web sample](../../AmwalECR-Web-Example/README.md) is a second front
-   end on the same library, not a second implementation.
+3. Be reusable: the web sample is a second front end on the same library.
 
 ```mermaid
 flowchart TD
-    SDK["AmwalPay.Ecr<br/>the SDK (sibling repo or NuGet)<br/>netstandard2.0 and net8.0"]
+    SDK["AmwalPay.Ecr<br/>sibling checkout or NuGet"]
     Core["AmwalECR.Example.Core<br/>net8.0, no UI<br/>rules, storage, transaction flow"]
     WPF["AmwalECR.Example<br/>net8.0-windows, WPF<br/>views, view-models, behaviours"]
-    Web["AmwalECR.WebExample<br/>ASP.NET Core<br/>(other sample)"]
+    Web["AmwalECR.WebExample<br/>ASP.NET Core"]
     Tests["AmwalECR.Example.Tests<br/>xUnit, net8.0"]
-
     WPF --> Core
     Web --> Core
     Tests --> Core
     Core --> SDK
 ```
 
-| Layer | Project | Knows about | Does not know about |
-|---|---|---|---|
-| SDK | `AmwalPay.Ecr` | Wire protocol, signing, transports | Any UI, any storage |
-| Core | [`src/AmwalECR.Example.Core`](../src/AmwalECR.Example.Core) | The SDK; the sample's rules | WPF, `System.Windows`, DPAPI, the dispatcher |
-| WPF | [`src/AmwalECR.Example`](../src/AmwalECR.Example) | Core (and, transitively, the SDK) | — |
+- **Core is `net8.0`, not `net8.0-windows`**, so a `net8.0` test project can reference it.
+  Anything that needs Windows (DPAPI, clipboard, dialogs, `BitmapImage`) is behind an interface
+  (`ISecretProtector`, `IDialogService`, `IClipboardService`) or lives in the WPF project.
+- **Core owns the SDK dependency.** Only `AmwalECR.Example.Core.csproj` references the SDK
+  (`project` or `nuget`, set in `Directory.Build.props`); everything else receives it
+  transitively.
+- **The rules are records and pure functions** (`TransactionFormState`, `TransactionOutcomes`,
+  `ResultPresenter`, `SelectedTerminalConfig.Resolve`, `AmountEntry`), so the two front ends
+  cannot disagree about what a void needs or when to say "Outcome unknown".
+- Non-goals: no DI container, no ORM, no localisation, no theme switch.
 
-Why the split is where it is:
-
-- **Core is `net8.0`, not `net8.0-windows`.** A project that targets `-windows` cannot be
-  referenced from a `net8.0` test project, and cannot run on the maintainer's Mac. Anything
-  that needs Windows (DPAPI, the clipboard, dialogs, `BitmapImage`) is behind an interface
-  ([`ISecretProtector`](../src/AmwalECR.Example.Core/Data/ISecretProtector.cs)) or lives in
-  the WPF project ([`IDialogService`, `IClipboardService`](../src/AmwalECR.Example/Services/IDialogService.cs)).
-- **Core owns the SDK dependency.** Only
-  [`AmwalECR.Example.Core.csproj`](../src/AmwalECR.Example.Core/AmwalECR.Example.Core.csproj)
-  references the SDK (`project` or `nuget`, see [n](#n-building-publishing-running)); the app
-  and the tests receive it transitively, so the choice is made in exactly one place.
-- **The rules are records and pure functions.** `TransactionFormState`, `TransactionOutcomes`,
-  `ResultPresenter`, `SelectedTerminalConfig.Resolve` and `AmountEntry` take values and return
-  values. The web sample calls the same ones, so the two front ends cannot disagree about what a
-  void needs or when to say "Outcome unknown".
-- **Non-goals:** no DI container (too few objects), no ORM, no localisation, no theming
-  switch. The sample is deliberately small enough to read in an afternoon.
-
-What the WPF project adds on top of Core: MVVM plumbing
-([CommunityToolkit.Mvvm](https://learn.microsoft.com/dotnet/communitytoolkit/mvvm/) 8.3.2 source
-generators), XAML views, three attached behaviours, converters, the DPAPI protector, dialog and
-clipboard services, and the QR bitmap generator.
+The WPF project adds MVVM plumbing (CommunityToolkit.Mvvm 8.3.2 source generators), XAML views,
+three attached behaviours (`AmountInput`, `TextFilter`, `PasswordBoxBinding`), converters, the
+DPAPI protector, dialog and clipboard services, and the QR bitmap generator (QRCoder 1.6.0).
 
 ## b. Composition root and wiring
 
-[`App.xaml.cs`](../src/AmwalECR.Example/App.xaml.cs) `OnStartup` builds everything by hand.
-There is no `App.xaml` `StartupUri`; the window is created in code so it can be given its
-`DataContext`.
+`App.OnStartup` builds everything by hand and creates the window in code (no `StartupUri`) so it
+can set `DataContext`. In order:
 
-```mermaid
-flowchart LR
-    Log["LogBuffer<br/>500 lines"]
-    Lan["IEcrLogger 'Ecr'"]
-    Web["IEcrLogger 'EcrWebService'"]
-    Repo["TerminalRepository<br/>terminals.json"]
-    Settings["EcrExampleSettings<br/>settings.dat"]
-    Dpapi["DpapiSecretProtector"]
-    Engine["TransactionEngine"]
-    TVM["TransactionViewModel"]
-    SVM["SettingsViewModel"]
-    TeVM["TerminalsViewModel"]
-    LVM["LogViewModel"]
-    MVM["MainViewModel"]
-    Pres["ResultDialogPresenter"]
-
-    Log --> Lan
-    Log --> Web
-    Dpapi --> Settings
-    Repo --> Engine
-    Settings --> Engine
-    Lan --> Engine
-    Web --> Engine
-    Engine --> TVM
-    Repo --> TVM
-    Settings --> TVM
-    Settings --> SVM
-    Repo --> TeVM
-    SVM --> TeVM
-    Log --> LVM
-    TVM --> MVM
-    TeVM --> MVM
-    LVM --> MVM
-    TVM --> Pres
-```
-
-In order, as the code does it:
-
-1. `DispatcherUnhandledException` handler: shows a message that says an in-progress
-   transaction's outcome may be unknown, and marks the exception handled. It is the last line
-   of defence, not the error strategy.
-2. `LogBuffer` with `Debug.WriteLine` as its mirror, then two `IEcrLogger`s from
-   `EcrLogger.From(...)` that append to it under the tags `Ecr` (LAN) and `EcrWebService`.
-3. `TerminalRepository` on `%APPDATA%\AmwalECR-Example\terminals.json`, and
-   `EcrExampleSettings` on `...\settings.dat` with a `DpapiSecretProtector`. `App.DataDirectory`
-   is the folder.
+1. A `DispatcherUnhandledException` handler (last line of defence: says an in-progress
+   transaction's outcome may be unknown).
+2. `LogBuffer` (mirrored to `Debug.WriteLine`) and two `IEcrLogger`s from `EcrLogger.From(...)`,
+   tagged `Ecr` (Wi-Fi) and `EcrWebService`.
+3. `TerminalRepository` on `%APPDATA%\AmwalECR-Example\terminals.json` and `EcrExampleSettings` on
+   `settings.dat` with a `DpapiSecretProtector`.
 4. `TransactionEngine(repository, settings, lanLogger, webServiceLogger)`.
-5. View-models: `TransactionViewModel`, `TerminalsViewModel` (which wraps a `SettingsViewModel`),
+5. View-models: `TransactionViewModel`, `TerminalsViewModel` (wraps `SettingsViewModel`),
    `LogViewModel`, all handed to `MainViewModel`.
-6. `ResultDialogPresenter` — nobody holds a reference to it; it stays alive because it
-   subscribed to `transaction.PropertyChanged`.
-7. `MainWindow` with `DataContext = main`, `Show()`, then the selected terminal's config is
-   written to the log once.
+6. `ResultDialogPresenter`, which stays alive by subscribing to `transaction.PropertyChanged`.
+7. `MainWindow` with `DataContext = main`.
 
-**Navigation** is two pages and a `ContentControl`.
-[`MainViewModel.CurrentPage`](../src/AmwalECR.Example/ViewModels/MainViewModel.cs) holds either
-the transaction or the terminals view-model; two implicit `DataTemplate`s in
-[`App.xaml`](../src/AmwalECR.Example/App.xaml) pick the matching view. Leaving the terminals
-page calls `Transaction.RefreshConfig()`, because terminals or keys may have changed while
-away. Escape on the terminals page goes back
-([`MainWindow.xaml.cs`](../src/AmwalECR.Example/MainWindow.xaml.cs)).
-
-Dialogs are behind `IDialogService` (`ShowTerminalEdit`, `ShowResult`, `Confirm`); the
-view-models never touch a `Window`. A view-model unit test could substitute a fake, but see
-[l](#l-tests) and [o](#o-known-limitations): the view-models are not currently tested.
+**Navigation** is two pages in a `ContentControl`: `MainViewModel.CurrentPage` holds the
+transaction or terminals view-model and implicit `DataTemplate`s in `App.xaml` pick the view.
+Leaving the Terminals page calls `Transaction.RefreshConfig()` because terminals or keys may
+have changed; Escape on the Terminals page goes back. Dialogs are behind `IDialogService`
+(`ShowTerminalEdit`, `ShowResult`, `Confirm`); view-models never touch a `Window`.
 
 ## c. Terminals and settings persistence
 
-Two files under `%APPDATA%\AmwalECR-Example\`, two classes, both registered as concrete types
-(there is no `ITerminalRepository`; see the storage recipe in [m](#m-extension-recipes)).
+### `TerminalRepository` (`Core/Data/TerminalRepository.cs`)
 
-### `TerminalRepository` — [`Data/TerminalRepository.cs`](../src/AmwalECR.Example.Core/Data/TerminalRepository.cs)
+- JSON `{ "terminals": [ ... ] }`, camel-case, indented, keyed by **serial number**. The
+  transaction screen stores only a serial and looks the terminal up when it sends, so a terminal
+  that moves to a new IP needs no change elsewhere.
+- Read once in the constructor, held in memory; every change writes the whole (small) file under
+  one lock. The write goes to `terminals.json.tmp`, then `File.Replace`, so a crash leaves the
+  previous list. Memory changes only after a successful write.
+- `Save(terminal, originalSerial)` and `Delete` return `SaveResult.Saved` or
+  `SaveResult.Failed(message)` (a closed record hierarchy, not exceptions). A duplicate serial is
+  `"A terminal with this serial number already exists"`.
+- An unreadable file is copied to `terminals.json.unreadable`, the list starts empty and
+  `LoadWarning` is set (shown in a red card on the Terminals page); it never silently overwrites
+  what it could not read.
+- Sorted by name (case-insensitive), then serial. `Changed` is raised on the thread that made
+  the change.
 
-- A JSON document `{ "terminals": [ ... ] }`, camel-case, indented. The primary key is
-  **`SerialNumber`**; the transaction screen stores only a serial and looks the rest up at the
-  moment it sends, so a terminal that moves to a new IP needs no change elsewhere.
-- **Read once, held in memory.** The file is read in the constructor; `GetAll` and
-  `FindBySerial` answer from the in-memory list. Every change writes the whole (tiny) file
-  under one lock. (The class comment says "every call reads and writes it whole"; the code
-  reads once. Listed under defects in the hand-off.)
-- **Write path:** serialise to `terminals.json.tmp`, then `File.Replace(temp, path, null)` (or
-  `File.Move` for the first write). A crash mid-save leaves the previous list plus a stray
-  `.tmp`, not half a new list. It is an atomic replace, not a durability guarantee: nothing is
-  flushed to disk explicitly.
-- **In-memory state changes only after a successful write** (`Write(next); _terminals = next;`),
-  so a failed save leaves memory and disk in agreement.
-- `Save(terminal, originalSerial)`: `originalSerial == null` inserts. If the serial changed
-  and another entry already has it, the result is
-  `SaveResult.Failed("A terminal with this serial number already exists")` and nothing changes.
-  Changing an existing terminal's serial removes the old entry and adds the new one.
-- `Save` and `Delete` return `SaveResult.Saved` or `SaveResult.Failed(message)` — a closed
-  record hierarchy, not exceptions. IO, permission and JSON errors are caught and turned into
-  `Failed`.
-- **Unreadable file:** an `IOException`/`JsonException`/`UnauthorizedAccessException` on load
-  copies the file to `terminals.json.unreadable`, starts with an empty list and sets
-  `LoadWarning` (`"... A copy was kept at <path>."`). It never silently overwrites what it could
-  not read. [`TerminalsViewModel`](../src/AmwalECR.Example/ViewModels/TerminalsViewModel.cs)
-  shows the warning in a red card at the top of the Terminals page.
-- Sorting is by name, case-insensitive, then serial. A hand-edited duplicate serial keeps the
-  first entry.
-- `Changed` is raised **on whichever thread made the change**. The WPF app only changes terminals
-  from the UI thread, so its handlers can touch UI-bound state; the web sample calls from request
-  threads.
+### `EcrExampleSettings` (`Core/Data/EcrExampleSettings.cs`)
 
-### `EcrExampleSettings` — [`Data/EcrExampleSettings.cs`](../src/AmwalECR.Example.Core/Data/EcrExampleSettings.cs)
+Holds the environment (`SIT`/`UAT`/`PROD`) and **two** signing keys, because Amwal issues
+different secrets per link. Keys are not fields on `Terminal`:
 
-Holds the environment (`SIT`/`UAT`/`PROD`, default `EcrEnvironments.Default`) and **two**
-signing keys, because Amwal issues different secrets for different links (same model as the
-Android ECR-simulator's `EcrSimulatorSettings`). Keys are **not** fields on `Terminal`:
+| Setting | `SecureHashKeyFor(mode)` |
+|---|---|
+| `WifiSecureHashKey` | `Wifi`, `UsbCable`, `Bluetooth` |
+| `WebServiceSecureHashKey` | `WebService` |
 
-| Setting | Used for | `SecureHashKeyFor(mode)` |
-|---|---|---|
-| `WifiSecureHashKey` | Wi-Fi (LAN); USB cable and Bluetooth would share it | `Wifi`, `UsbCable`, `Bluetooth` |
-| `WebServiceSecureHashKey` | Web Service JSON HMAC | `WebService` |
-
-The SDK does not store or choose keys; this class is where the app does. The Terminals
-screen shows both settings cards above the list; Add/Edit terminal never asks for a key.
-
-- Setters **trim** the value, swap in a cloned `Values` object under a lock, write the file and
-  raise `Changed` (outside the lock). `TransactionViewModel` subscribes to `Changed` so the
-  config card and the Start button react the moment a key is typed.
-- **Encrypted at rest:** the whole JSON payload goes through `ISecretProtector.Protect`, then the
-  same temp-file-and-replace write as above.
-- **A failed write does not lose the value.** It stays in memory for the run and
-  `SaveError` is set (`"Could not save settings: ..."`); the next good write clears it.
-  [`SettingsViewModel`](../src/AmwalECR.Example/ViewModels/SettingsViewModel.cs) surfaces it as
-  `Notice`.
-- **`LoadWarning`** is set when the file exists but `Unprotect` (or the JSON parse) fails. The
-  message says the settings "are encrypted for the account that saved them" and to enter the
-  keys again; the values start empty. The word is "account", not "Windows user", because the
-  web sample uses the same class with a different protector.
+- Setters trim, swap in a cloned values object under a lock, write the file and raise `Changed`
+  (outside the lock). `TransactionViewModel` subscribes so the config card and Start button react
+  as a key is typed.
+- The whole payload goes through `ISecretProtector.Protect`, then the same temp-file-and-replace
+  write. A failed write keeps the value in memory and sets `SaveError`
+  (`"Could not save settings: ..."`); the next good write clears it.
+- `LoadWarning` is set when the file exists but cannot be decrypted or parsed ("encrypted for the
+  account that saved them"; values start empty). It clears as soon as a key is saved over the
+  bad file. The wording says "account", not "Windows user", because the web sample uses the same
+  class with a different protector.
 
 ### `ISecretProtector` and DPAPI
 
-[`ISecretProtector`](../src/AmwalECR.Example.Core/Data/ISecretProtector.cs) is two methods,
-`Protect(byte[])` and `Unprotect(byte[])`, the latter documented to throw
-`CryptographicException` on data it cannot read.
-[`DpapiSecretProtector`](../src/AmwalECR.Example/Services/DpapiSecretProtector.cs) is
-`ProtectedData` with **`DataProtectionScope.CurrentUser`** and a fixed entropy string
-(`AmwalECR-Example.settings.v1`).
+`ISecretProtector` is `Protect(byte[])` / `Unprotect(byte[])` (the latter throws
+`CryptographicException` on data it cannot read). `DpapiSecretProtector` is `ProtectedData` with
+`DataProtectionScope.CurrentUser` and a fixed entropy string (`AmwalECR-Example.settings.v1`).
+Only the Windows account that saved the file can decrypt it; there is no key for the app to
+store. A file from another user or machine fails to decrypt and the app starts with empty keys
+and a warning. Tests use a reversible fake that still throws on garbage.
 
-- **Scope:** only the Windows account that saved the file can decrypt it. There is no key for
-  the app to store, and nothing to back up or lose separately from the account.
-- **Entropy** is not a secret. It only stops another program running as the same user from
-  decrypting the file by accident.
-- **File made by another user** (copied from another account, a different machine, or a
-  rebuilt profile): `Unprotect` throws `CryptographicException`, `Load` catches it, sets
-  `LoadWarning`, and the app starts with empty keys. The Terminals page shows the warning above
-  the key fields.
-- **What is not handled:** the unreadable `settings.dat` is *not* set aside the way
-  `terminals.json` is; the next key typed replaces it. That is deliberate enough: the file only
-  holds keys the operator can type again. The warning itself clears as soon as a key is saved,
-  because a successful write has replaced the bad file (`Update` in
-  [`EcrExampleSettings.cs`](../src/AmwalECR.Example.Core/Data/EcrExampleSettings.cs); pinned by
-  `The_unreadable_file_warning_goes_away_once_a_key_is_saved_over_it`).
-- The tests use a reversible fake (`FakeProtector` in
-  [`DataTests.cs`](../tests/AmwalECR.Example.Tests/DataTests.cs)) that still throws
-  `CryptographicException` on garbage, so the failure path is exercised without Windows.
-
-`Terminal` ([`Data/Terminal.cs`](../src/AmwalECR.Example.Core/Data/Terminal.cs)) stores the TMS
-`ecrMode` as an int (`1` USB cable, `2` Wi-Fi, `3` Bluetooth, `4` Web Service —
-[`EcrMode`](../src/AmwalECR.Example.Core/Data/EcrMode.cs)); an unknown value reads as Wi-Fi.
-`EcrModes.IsSupportedInExample` is the single switch that decides which modes can run.
-[`TerminalValidator`](../src/AmwalECR.Example.Core/Terminals/TerminalValidator.cs) holds the edit
-form's rules: name and serial always; IPv4 for Wi-Fi; an optional port in 1–65535 (blank is
-stored as `9100` — the Android form insists on one, the SDK does not need it); numeric,
-64-bit-safe merchant and terminal IDs for Web Service.
+`Terminal` stores the TMS `ecrMode` as an int (`1` USB cable, `2` Wi-Fi, `3` Bluetooth, `4` Web
+Service); an unknown value reads as Wi-Fi. `EcrModes.IsSupportedInExample` is the single switch
+for which modes can run. `TerminalValidator` holds the edit form's rules: name and serial always;
+IPv4 for Wi-Fi; optional port 1-65535 (blank is stored as 9100); numeric, 64-bit-safe merchant
+and terminal IDs for Web Service.
 
 ## d. From a terminal to an SDK call
 
-Three calls, in this order, are the whole SDK integration. Everything else in the sample is
-user interface around them.
+Three SDK calls are the whole integration; the rest of the sample is UI around them:
 
 ```
-SelectedTerminalConfig.Resolve(terminal, environment, key)   // Core/Services/SelectedTerminalConfig.cs
-        |   wraps
-        v
-EcrSessions.Plan(link, config, rawKey)                        // SDK: validate, never throws for bad input
-        |   yields an EcrSessionPlan with Issues
-        v
-EcrSessions.Open(serial, plan, usbChannel, logger)            // SDK: throws if the plan has issues
-        |   yields an EcrOpenedSession
-        v
+SelectedTerminalConfig.Resolve(terminal, environment, key)    // Core/Services/SelectedTerminalConfig.cs
+        |  wraps
+EcrSessions.Plan(link, config, rawKey)                         // validates; never throws for bad input
+        |  EcrSessionPlan with Issues
+EcrSessions.Open(serial, plan, usbChannel, logger)             // throws if the plan has issues
+        |  EcrOpenedSession
 session.ProbeReachabilityAsync / SaleAsync / VoidAsync / RefundAsync / InquireAsync /
-        InquireByReferenceAsync / ReceiptAsync                // same shape over LAN and Web Service
+        InquireByReferenceAsync / ReceiptAsync / CloseReceiptAsync   // same shape on Wi-Fi and Web Service
 ```
 
-[`SelectedTerminalConfig.Resolve`](../src/AmwalECR.Example.Core/Services/SelectedTerminalConfig.cs)
-does the mapping the SDK deliberately leaves to the app:
+`SelectedTerminalConfig.Resolve` does the mapping the SDK leaves to the app:
 
-1. If the mode is not `IsSupportedInExample`, add the issue `"<Mode> is not supported in this
-   sample"`.
-2. Map the persisted terminal to an `EcrLink`: `Wifi` → `EcrLink.Lan(ip, portOrDefault)`,
-   `WebService` → `EcrLink.WebService(merchantId, terminalId)`, `UsbCable` → `EcrLink.UsbCable`,
-   anything else (Bluetooth) → `EcrLink.Lan(ip, 9100)`. An out-of-range port becomes
-   `EcrConfig.DefaultPort` (9100).
-3. Build the requested `EcrConfig` with the environment, IDs, port, and the key **only if**
+1. If the mode is not `IsSupportedInExample`, add `"<Mode> is not supported in this sample"`.
+2. Map the terminal to an `EcrLink`: Wi-Fi -> `EcrLink.Lan(ip, port)`, Web Service ->
+   `EcrLink.WebService(merchantId, terminalId)`, USB -> `EcrLink.UsbCable`, anything else
+   (Bluetooth) -> `EcrLink.Lan(ip, 9100)` as a placeholder. An out-of-range port becomes 9100.
+3. Build the requested `EcrConfig` with the environment and IDs, and the key only if
    `EcrConfig.IsValidSecureHashKey` accepts it.
-4. Call `EcrSessions.Plan(link, requested, trimmedKey)`. The raw trimmed key is passed as a
-   third argument so the SDK can report a *malformed* key as an issue even though the config it
-   is handed carries an empty one.
-5. Append the app's own issue (step 1) to the plan's `Issues`.
+4. Call `EcrSessions.Plan(link, requested, trimmedKey)`. Passing the raw key as a third argument
+   lets the SDK report a malformed key as an issue.
+5. Append the app's own issue to `Plan.Issues`.
 
-The result is a record wrapping the plan, with UI-facing properties: `IsReady`
-(`IsSupported && Plan.IsReady`), `Issues`, `TransportLabel`
-(`"TCP LAN (sorted key=value HMAC)"` / `"HTTPS Web Service (JSON HMAC)"`), `HashKeyLabel`,
-`HashKeyStatus` (`"configured (32 hex chars)"` or `"not configured — set in Terminals settings"`),
-`ConnectionSummary`.
-
-Typical issues, all produced by the SDK: `Wi-Fi/LAN secure hash key is not configured`,
+The result exposes `IsReady`, `Issues`, `TransportLabel` (`TCP LAN (sorted key=value HMAC)` or
+`HTTPS Web Service (JSON HMAC)`), `HashKeyLabel`, `HashKeyStatus` and `ConnectionSummary`.
+Typical issues are produced by the SDK: `Wi-Fi/LAN secure hash key is not configured`,
 `Secure hash key must be an even-length hex string of at least 16 characters`,
-`IP address is required for LAN ECR`, `Merchant ID must be numeric`. The key label differs by
-link (`Web Service secure hash key` for Web Service).
+`IP address is required for LAN ECR`, `Merchant ID must be numeric`.
 
-### Web Service initialization
+**Wi-Fi vs Web Service at run time.** Same three calls, different link, key and plan fields.
+Web Service differs in that `ProbeReachabilityAsync` returns `null` (the engine skips the probe),
+a lost money-moving answer arrives as a `Declined` (see [g](#g-the-transaction-engine-state-machine-and-payment-safety-rules)),
+`ReceiptAsync` is unavailable, and by-reference inquiry posts `/Ecr/Inquiry` with a blank date.
+SDK default response timeouts: 120 s Wi-Fi; a Web Service plan raises the default to 130 s.
 
-Operator-facing steps live in the
-[README](../README.md#web-service-initialization). Under the hood the path is the same three
-SDK calls as LAN; only the link, key and plan fields differ.
-
-| Step | App | SDK |
-|---|---|---|
-| 1. Persist credentials | `EcrExampleSettings`: `Environment`, `WebServiceSecureHashKey` (DPAPI); `Terminal`: serial, `MerchantId`, `TerminalId`, mode `WebService` | — |
-| 2. Map + validate | `SelectedTerminalConfig.Resolve` → `EcrLink.WebService(merchantId, terminalId)`, `EcrConfig` with environment + Web Service key | `EcrSessions.Plan` — no Hub call |
-| 3. Gate UI | Config card / `CanStart` require `IsReady` | Plan issues listed above |
-| 4. Open + operate | `TransactionEngine.RunAsync` re-resolves, then | `EcrSessions.Open` → `SaleAsync` / `VoidAsync` / `RefundAsync` / `InquireAsync` / `InquireByReferenceAsync` |
-
-What the plan must satisfy before `IsReady`:
-
-- Mode is `WebService` and `IsSupportedInExample` (true in this sample).
-- Merchant ID and terminal ID non-empty and numeric.
-- Web Service key present after sanitization (even-length hex, ≥ 16 chars) — **not** the
-  Wi‑Fi/LAN key from `WifiSecureHashKey`.
-- `Environment` is `SIT`, `UAT`, or `PROD` (Hub base URL is SDK-internal).
-
-Differences from LAN at run time (engine / outcomes, not init):
-
-- `ProbeReachabilityAsync` returns `null` — the engine skips the probe.
-- A lost money-moving answer arrives as `Declined` with
-  `NextStep.InquireByMerchantReference` (often `NO_RESPONSE`), classified as unknown — never
-  retry; offer inquire-by-reference.
-- `ReceiptAsync` is unavailable; the result dialog says so.
-- Inquiry by reference posts `/Ecr/Inquiry` with a blank date (no synthetic “today”).
-
-SDK checklist (Hub URLs, TLS, signing field `secureHashValue`):
-[integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
-
-**The config card.** [`TerminalConfigCard.xaml`](../src/AmwalECR.Example/Views/TerminalConfigCard.xaml)
-takes a `SelectedTerminalConfig` as its `DataContext` and shows mode, transport, connection, the
-active key's label and status, and every issue in red; the card turns from the neutral to the
-error-container colour when `IsReady` is false. `TransactionViewModel.CanStart` is
-`!State.IsBusy && SelectedConfig?.IsReady == true`, so the operator sees what is missing
-**before** paying and the Start button is disabled until it is fixed.
-
-The card re-resolves from four triggers, all funnelled into
-[`TransactionViewModel.RefreshConfig`](../src/AmwalECR.Example/ViewModels/TransactionViewModel.cs):
-the dropdown selection changes; the repository raises `Changed`; the settings raise `Changed`;
-`MainViewModel.Back` returns from the Terminals page.
+**The config card** (`TerminalConfigCard.xaml`) takes a `SelectedTerminalConfig` and shows mode,
+transport, connection, key label and status and every issue; `TransactionViewModel.CanStart` is
+`!State.IsBusy && SelectedConfig?.IsReady == true`. It re-resolves from four triggers, all into
+`RefreshConfig`: the dropdown selection, repository `Changed`, settings `Changed`, and returning
+from the Terminals page.
 
 **Resolved again at send time.** `TransactionEngine.RunAsync` does not trust the card: it looks
-the terminal up by serial in the repository, calls `ResolveConfig` again, refuses with
-`TransactionState.Failed` if the terminal is gone (`"Terminal X is no longer registered"`) or the
-plan has issues (issues joined by newlines), then calls `EcrSessions.Open`. `Open` throws
-`ArgumentException` for a plan with issues and `InvalidOperationException` for a USB plan with no
-channel factory; the engine catches both and returns them as `Failed`, so an SDK precondition can
-never surface as an unhandled exception.
+the terminal up by serial, resolves the config again, and refuses with `Failed` if the terminal is
+gone or the plan has issues. `EcrSessions.Open` throws `ArgumentException` for a plan with issues
+and `InvalidOperationException` for a USB plan with no channel factory; the engine catches both,
+so an SDK precondition never surfaces as an unhandled exception.
 
 ## e. The form model
 
-[`TransactionFormState`](../src/AmwalECR.Example.Core/Transaction/TransactionFormState.cs) is an
-immutable record: what the operator has typed plus the errors from the last validation. Its
-`Validated(terminalSerial)` returns `(form-with-errors, request-or-null)`. The bindable face is
-[`TransactionFormViewModel`](../src/AmwalECR.Example/ViewModels/TransactionFormViewModel.cs),
-which forwards edits into the record with `with`-expressions, clears the edited field's own error,
-and raises `PropertyChanged("")` (everything) so a type switch re-reads every binding.
+`TransactionFormState` (`Core/Transaction/`) is an immutable record of what the operator typed
+plus the errors from the last validation; `Validated(terminalSerial)` returns
+`(form-with-errors, request-or-null)`. `TransactionFormViewModel` is the bindable face: it
+forwards edits with `with`-expressions and raises `PropertyChanged("")` so a type switch re-reads
+every binding.
 
-**Which fields exist is decided by the SDK's flags on `EcrTransactionType`**, so showing a
-field and requiring it cannot disagree:
+Which fields exist is decided by the SDK's flags on `EcrTransactionType`:
 
 | Type | `RequiresAmount` | `RequiresOriginalStan` | `RequiresOriginalDate` | Fields shown |
 |---|---|---|---|---|
-| Sale | yes | no | no | Amount; Merchant reference (optional) |
-| Void | no | yes | no | Receipt number; "Different terminal" switch |
-| Refund | yes | yes | yes | Amount; Receipt number; Date; "Different terminal" switch |
-| Inquiry | no | yes | yes | Receipt number; Date; "Different terminal" switch; "Look up by reference" switch |
+| Sale | yes | no | no | Amount; merchant reference (optional) |
+| Void | no | yes | no | Receipt number; Different terminal |
+| Refund | yes | yes | yes | Amount; receipt number; date; Different terminal |
+| Inquiry | no | yes | yes | Receipt number; date; Different terminal; Look up by reference |
 
-Derived rules in the record:
+Derived rules:
 
-- `ShowOtherTerminalSwitch = Type.AllowsOtherTerminal()` (same as `RequiresOriginalStan`);
-  `ShowOriginalTerminal` additionally needs the switch on. A terminal ID left over from a hidden
-  switch is not sent (`OriginalTerminalId = ShowOriginalTerminal ? ... : ""`).
-- `ShowReferenceSwitch` is Inquiry only. With it on, the receipt number and date fields are
-  hidden and replaced by a reference field: a reference is unique on its own, and after a lost
-  answer there is no receipt number to type because that number was in the answer.
-- `ShowMerchantReference` is Sale only.
-- `OriginalDate` defaults to today and goes on the wire as `yyyyMMdd`
-  (`OriginalDateOnWire`); the picker's `DisplayDateEnd` (bound to `LatestDate`) stops future
-  dates, and the view-model clamps a future value to today.
-- Switching type **replaces the whole state** (`new TransactionFormState { Type = value }`), so no
-  amount, terminal ID or reference travels into the next operation.
-- After a result is acknowledged, `ClearAfterResult` clears amount, merchant reference and
-  original reference (the per-transaction fields) but keeps the type, date and switches.
+- The terminal-ID field needs the switch on; a leftover ID from a hidden switch is not sent.
+- *Look up by reference* (inquiry only) hides receipt number and date and shows the **Original
+  merchant reference** field: a reference is unique on its own, and after a lost answer there is
+  no receipt number to type because it was in the answer.
+- `OriginalDate` defaults to today, is clamped to today, and goes on the wire as `yyyyMMdd`.
+- Switching type replaces the whole state, so nothing travels into the next operation.
+  `ClearAfterResult` clears amount and references but keeps type, date and switches.
 
-`Validated` mapping from state to `TransactionRequest` (the value the engine consumes):
+`Validated` builds the `TransactionRequest`: `Amount` from `AmountEntry.AmountOf(digits)` if the
+type needs one; `ReceiptNumber` blank when looking up by reference; `TransactionDate` only if the
+date field is shown; for a by-reference inquiry `OriginalReference` is the typed reference and
+`MerchantReference` stays blank; for a sale `MerchantReference` is the typed value.
 
-| Request field | Value |
-|---|---|
-| `Amount` | `AmountEntry.AmountOf(digits)` if the type needs one, else `null` |
-| `ReceiptNumber` | `""` when looking up by reference |
-| `TransactionDate` | `yyyyMMdd` only if the date field is shown |
-| `OriginalReference` and `MerchantReference` | both the typed reference when looking up by reference; otherwise `MerchantReference` only for a sale |
-
-**Error strings** (all in `Validated` or `MerchantReferenceError`):
-
-| Field | Message |
-|---|---|
-| Amount, empty | `Required field` |
-| Amount, under the minimum | `minimum amount allowed is 0.010` |
-| Amount, over the maximum | `maximum amount allowed is 100000.000` |
-| Receipt number, empty | `Enter the receipt number of the transaction to act on` |
-| Reference (inquiry), empty | `Enter the reference the transaction was sent with` |
-| Original terminal, empty while switch is on | `Enter the terminal the original was taken on` |
-| Merchant reference, over 32 | `A merchant reference is at most 32 characters` |
-| Merchant reference, bad character | `Use printable ASCII without spaces, '&' or '='` |
-
-Validation answers only "is this complete enough to send". Whether the terminal will accept it
-needs the payment backend, and only the terminal can ask. The merchant reference rule
-(≤ 32 chars, printable ASCII `0x21`–`0x7E`, no `&` or `=`) duplicates the SDK's own so the operator
-hears it before anything is sent; the SDK throws `ArgumentException` for a violation, which the
-engine also handles.
-
-The XAML sets `MaxLength` on the receipt number (6) and reference (32) boxes and filters digits
-with `ui:TextFilter.Mode="Digits"`; the view-model enforces the same limits again
-(`ReceiptNumber` keeps up to 6 digits, `OriginalTerminalId` digits only). The view-model is the
-authority; the `MaxLength` is convenience.
+Error strings (`Validated` / `MerchantReferenceError`): `Required field`;
+`minimum amount allowed is 0.010`; `maximum amount allowed is 100000.000`;
+`Enter the receipt number of the transaction to act on`;
+`Enter the reference the transaction was sent with`;
+`Enter the terminal the original was taken on`;
+`A merchant reference is at most 32 characters`;
+`Use printable ASCII without spaces, '&' or '='`. The merchant-reference rule duplicates the
+SDK's so the operator hears it before anything is sent. The XAML `MaxLength` and `TextFilter`
+are conveniences; the view-model is the authority.
 
 ## f. Amount entry
 
-Two halves: pure functions in Core, a WPF behaviour on top.
+`AmountEntry` (`Core/Ui/`) keeps the **raw keyed digits** as state and derives the text:
+`KeyedDigits` (ASCII digits, leading zeros dropped, capped at `MaxDigits`), `Append`,
+`Backspace`, `Format` (three fixed decimals, `0.000` when empty) and `AmountOf`
+(`long.Parse(digits) / 1000m`). `AmountLimits`: `Min = 0.010`, `Max = 100000.000`,
+`FractionDigits = 3`, `MaxDigits = 9` (derived from `Max`). A tenth digit is ignored; an
+over-limit amount such as `999999.999` is rejected on Start with the maximum message rather than
+trimmed. The SDK turns the `decimal` into the 12-digit minor-unit string
+(`000000001234` for `1.234`).
 
-[`AmountEntry`](../src/AmwalECR.Example.Core/Ui/AmountEntry.cs) (mirrors the merchant app's
-`AmountInputFormatter`) — the state is the **raw keyed digits**, and the text is derived:
+`AmountInput` makes a plain `TextBox` behave like the terminal's field, through attached
+properties `AmountInput.Digits` (bound to `Form.AmountDigits`) and `AmountInput.Active`, which
+hooks: `PreviewTextInput` (digits through `Append`), `PreviewKeyDown` (Backspace; Delete and Space
+swallowed; Escape clears), `GotKeyboardFocus` (focus from another control starts a fresh
+amount), `SelectionChanged`/`PreviewMouseUp` (caret pinned to the end), paste (cancelled and
+re-keyed as digits), Cut disabled, and IME, undo and drop disabled. The digits property is the
+only source of truth; the `TextBox` never edits itself.
 
-| Function | Does |
-|---|---|
-| `KeyedDigits(text)` | ASCII digits only, leading zeros dropped, capped at `AmountLimits.MaxDigits` |
-| `Append(digits, c)` | `KeyedDigits(digits + c)` |
-| `Backspace(digits)` | drops the last digit |
-| `Format(digits)` | renders with three fixed decimals, `0.000` when empty |
-| `AmountOf(digits)` | `long.Parse(digits) / 1000m` |
+The web sample reimplements this in `amount.js` and checks it against Core's vectors with
+`tools/test-amount.mjs`.
 
-[`AmountLimits`](../src/AmwalECR.Example.Core/Ui/AmountLimits.cs): `Min = 0.010`,
-`Max = 100000.000` (mirroring the POS form; on a real terminal the limit comes from the server, so
-this is a constant to change), `FractionDigits = 3`, `MaxDigits = 9` (derived: the digits of
-`Max * 1000`). `MaxDigits` lets the operator key up to `999999.999` (a tenth digit is ignored),
-which validation then rejects with the *maximum* message on Start, so an over-limit amount is
-reported rather than trimmed to something valid. The amount goes to the SDK as a `decimal`; the SDK turns it into the 12-digit minor-unit
-string (`000000001234` for `1.234`, pinned in the engine tests).
+## g. The transaction engine, state machine and payment-safety rules
 
-[`AmountInput`](../src/AmwalECR.Example/Ui/Behaviors/AmountInput.cs) makes a plain `TextBox`
-behave like the terminal's own field. It is two attached properties:
-`AmountInput.Digits` (two-way by default, bound to `Form.AmountDigits`) and
-`AmountInput.Active`, which hooks the events:
-
-- `PreviewTextInput` — marks the event handled and keys each ASCII digit through `Append`.
-- `PreviewKeyDown` — Backspace calls `Backspace`; **Delete and Space are swallowed**; **Escape
-  clears** a non-empty amount.
-- `GotKeyboardFocus` — moving focus **from another control** clears the amount (a half-typed
-  figure with no caret to place would only confuse); re-activating the window with focus
-  already in the box does not.
-- `SelectionChanged` and `PreviewMouseUp` — call `PinCaret`, which forces the selection to the
-  end. A click in the middle cannot make the next digit land there.
-- `DataObject.AddPastingHandler` — cancels the paste and keys the pasted text's digits in.
-- `CommandManager.AddPreviewCanExecuteHandler` — disables **Cut**.
-- `InputMethod.SetIsInputMethodEnabled(box, false)`, `IsUndoEnabled = false`, `AllowDrop = false` —
-  so an IME, undo or a drop cannot bypass the handlers.
-
-Because `Render` writes `box.Text` from the digits, the digits property is the only source of
-truth and the TextBox never edits itself.
-
-| Input | Digits held | Shows | Sent as |
-|---|---|---|---|
-| (empty) | `` | `0.000` | — |
-| `1` | `1` | `0.001` | `000000000001` |
-| `1` `2` | `12` | `0.012` | `000000000012` |
-| `1` `2` `3` `4` | `1234` | `1.234` | `000000001234` |
-| then Backspace | `123` | `0.123` | `000000000123` |
-| `0` `0` `5` | `5` | `0.005` | `000000000005` |
-| paste `12a3.4` | `1234` | `1.234` | `000000001234` |
-| a tenth digit after `999999999` | `999999999` | `999999.999` | rejected: over `100000.000` |
-| `9` alone | `9` | `0.009` | rejected: under `0.010` |
-| Escape | `` | `0.000` | — |
-
-(The first four rows are pinned by `Keys_1_2_3_4_then_backspace_follow_the_readme_table` in
-[`AmountTests.cs`](../tests/AmwalECR.Example.Tests/AmountTests.cs); the attached behaviour itself
-has no test, see [o](#o-known-limitations).) The web sample reimplements the same behaviour in
-JavaScript and checks it against Core's vectors with `tools/test-amount.mjs`.
-
-## g. The transaction engine and state machine
-
-[`TransactionEngine`](../src/AmwalECR.Example.Core/Services/TransactionEngine.cs) owns the flow;
-[`TransactionViewModel`](../src/AmwalECR.Example/ViewModels/TransactionViewModel.cs) owns the
-screen state and the `CancellationTokenSource`. That split is why the flow can be tested against a
+`TransactionEngine` owns the flow; `TransactionViewModel` owns the screen state, the
+`CancellationTokenSource` and the countdown. That split is why the flow can be tested against a
 real socket without a window.
 
-`RunAsync(request, report, cancellationToken)` in order:
+`RunAsync(request, report, cancellationToken)`, in order:
 
-1. **Look up** the terminal by serial; **re-resolve** the plan; refuse on any issue (`Failed`,
-   no reference: nothing was sent).
-2. **Open** the session; `ArgumentException`/`InvalidOperationException` → `Failed`.
+1. Look up the terminal by serial, re-resolve the plan, refuse on any issue (`Failed`, no
+   reference: nothing was sent).
+2. Open the session; `ArgumentException`/`InvalidOperationException` become `Failed`.
 3. **Reference.** For sale, void and refund (`MovesMoney`), a blank merchant reference is replaced
-   by `NewReference()` (12 upper-case hex characters — the shape the SDK generates). It is made
-   *here* so it is known even if the wait is cancelled: the SDK returns a reference on a result,
-   and a cancelled call returns none.
-4. **Probe** (`ProbeReachabilityAsync`). LAN only — Web Service returns `null` and is skipped. An
-   unreachable terminal returns `Failed` with the "Check:" message from
-   `TransactionOutcomes.UnreachableMessage` and **no** reference (nothing was sent, so there is
-   nothing to inquire about). Cancellation here returns `Idle`.
-5. **`report(InProgress)`** — the request is about to go out.
-6. **Execute** by type: `SaleAsync`, `VoidAsync`, `RefundAsync`, or (inquiry)
-   `InquireAsync` by receipt number and date / `InquireByReferenceAsync` by reference with the
-   form's `TransactionDate` as-is (blank for by-reference — same as the Android simulator; do
-   not invent today's date for Web Service).
-7. **Classify** with `TransactionOutcomes.FromResult` / `FromInquiry`.
-8. **Catch:** cancellation → `CancelledState`; `ArgumentException` → `Failed` (nothing sent);
-   anything else → `Failed("Unexpected error: ...")` carrying the reference for money-moving
-   operations.
+   by `NewReference()` (12 upper-case hex characters, the SDK's shape). It is made here so it is
+   known even if the wait is cancelled: the SDK returns a reference on a result, and a cancelled
+   call returns none.
+4. **Probe** (`ProbeReachabilityAsync`, Wi-Fi only). Unreachable returns `Failed` with the
+   "Check:" message and **no** reference. Cancellation here returns `Idle`.
+5. `report(InProgress)`: the request is about to go out.
+6. **Execute** by type. Inquiry calls `InquireAsync` (receipt number and date) or
+   `InquireByReferenceAsync` with the form's date as-is (blank for by-reference: a reference is
+   not day-scoped, and a synthetic "today" would miss older transactions on Web Service).
+7. Classify with `TransactionOutcomes.FromResult` / `FromInquiry`.
+8. Catch: cancellation -> `CancelledState`; `ArgumentException` -> `Failed` (nothing sent);
+   anything else -> `Failed("Unexpected error: ...")`, with the reference for money-moving types.
 
 ### State machine
 
 `TransactionState` is a closed record hierarchy: `Idle`, `Checking`, `InProgress`, `Completed`,
 `Inquired`, `Failed`. `IsBusy` is `Checking` or `InProgress`; `IsResult` is `Completed`,
-`Inquired` or `Failed` (states the operator must acknowledge). `Checking` is set by the
-view-model when it starts a run; the engine only reports `InProgress`.
+`Inquired` or `Failed`. The view-model sets `Checking`; the engine reports `InProgress`.
 
 ```mermaid
 stateDiagram-v2
@@ -556,54 +305,10 @@ stateDiagram-v2
     Failed --> Checking: Inquire by reference
 ```
 
-Notes on the diagram: from `Checking` the only outcomes are `Failed`, `Idle` (cancelled) or
-`InProgress`. `Failed --> Checking` is the one follow-up the screen offers after an unknown
-outcome: the result dialog hands off to a look-up rather than closing and resetting the form
-(`ResultDialogViewModel._handedOff`). `Idle` after a result is set by
-`TransactionViewModel.ResultAcknowledged`, which also clears the per-transaction form fields.
+`Failed -> Checking` is the one follow-up offered after an unknown outcome: the result dialog
+hands off to the look-up instead of closing and resetting the form.
 
-### A sale, end to end
-
-```mermaid
-sequenceDiagram
-    actor Op as Operator
-    participant V as TransactionView
-    participant VM as TransactionViewModel
-    participant F as TransactionFormState
-    participant E as TransactionEngine
-    participant S as EcrOpenedSession
-    participant T as Terminal
-    participant P as ResultDialogPresenter
-
-    Op->>V: keys amount, presses Start
-    V->>VM: SubmitCommand
-    VM->>F: Validated(serial)
-    F-->>VM: TransactionRequest
-    VM->>VM: State = Checking, new CancellationTokenSource
-    VM->>E: RunAsync(request, report, token)
-    E->>E: FindBySerial, ResolveConfig, plan is ready
-    E->>S: EcrSessions.Open
-    E->>E: reference = NewReference() if blank
-    E->>S: ProbeReachabilityAsync
-    S->>T: TCP connect and leave
-    T-->>S: reachable
-    E-->>VM: report(InProgress)
-    E->>S: SaleAsync(amount, reference, token)
-    S->>T: framed, signed SALE
-    Note over T: cardholder taps card
-    T-->>S: signed answer, nonce echoed
-    S-->>E: EcrResult.Approved
-    E->>E: TransactionOutcomes.FromResult
-    E-->>VM: Completed(result, Sale)
-    VM->>VM: State = Completed
-    VM-->>P: PropertyChanged(State)
-    P->>P: Dispatcher.BeginInvoke(Show)
-    P->>Op: result dialog, Approved
-    Op->>P: closes dialog
-    P->>VM: ResultAcknowledged, State = Idle, form cleared
-```
-
-The same run when the answer is lost (the branch that matters most):
+A lost answer, the branch that matters most:
 
 ```mermaid
 sequenceDiagram
@@ -611,7 +316,6 @@ sequenceDiagram
     participant S as EcrOpenedSession
     participant T as Terminal
     participant VM as TransactionViewModel
-
     E->>S: SaleAsync(amount, ref R)
     S->>T: SALE
     T--xS: connection dropped, no answer
@@ -620,14 +324,14 @@ sequenceDiagram
         T-->>S: Found
         S-->>E: Failed with Recovered = Found
         E-->>VM: Inquired, RecoveredFromFailure = true
-    else terminal does not answer or has no record
+    else no answer or no record
         S-->>E: Failed with Recovered = null or NotFound
         E-->>VM: Failed with InquirableReference = R
-        Note over VM: dialog says Outcome unknown and offers Inquire by reference only
+        Note over VM: Outcome unknown, Inquire by reference only
     end
 ```
 
-### Classification of results — [`TransactionOutcomes`](../src/AmwalECR.Example.Core/Transaction/TransactionOutcomes.cs)
+### Classification (`TransactionOutcomes`)
 
 ```mermaid
 flowchart TD
@@ -635,8 +339,8 @@ flowchart TD
     Fl -- yes --> Rec{"Recovered is Found?"}
     Rec -- yes --> Inq["Inquired, RecoveredFromFailure = true"]
     Rec -- no --> Unk{"Failure.OutcomeUnknown?"}
-    Unk -- yes --> FR["Failed with InquirableReference = the reference"]
-    Unk -- no --> FN["Failed with no reference: nothing was sent"]
+    Unk -- yes --> FR["Failed with InquirableReference"]
+    Unk -- no --> FN["Failed, no reference: nothing was sent"]
     Fl -- no --> NR{"Declined with ResponseCode NO_RESPONSE?"}
     NR -- yes --> FW["Failed with InquirableReference"]
     NR -- no --> NS{"Declined with NextStep InquireByMerchantReference?"}
@@ -644,473 +348,264 @@ flowchart TD
     NS -- no --> Cmp["Completed: Approved, or an ordinary Declined"]
 ```
 
-The rules this encodes — they are the payment-safety contract of the sample, and each has a test in
-[`OutcomeTests.cs`](../tests/AmwalECR.Example.Tests/OutcomeTests.cs):
+These are the payment-safety rules; each has a test in `OutcomeTests.cs`:
 
 - **Never retry; inquire by reference.** Sending a sale again after an unknown outcome is how a
-  customer is charged twice. The only follow-up the result dialog offers is
-  **Inquire by reference** (`InquireAboutReference` builds an Inquiry request with the reference as
-  both `OriginalReference` and `MerchantReference`). There is no retry button anywhere.
-- **`Failed` with `Failure.OutcomeUnknown`** (everything except `Failure.Unreachable`) carries the
-  reference. Unreachable means the request never left, so there is no reference and no look-up.
-- **`Declined` with `NextStep.InquireByMerchantReference`** — the terminal answered that it does
-  not know — is treated as unknown, not as a refusal, with the note "The terminal reports that it
-  does not know whether this completed."
+  customer is charged twice. The only follow-up the dialog offers is **Inquire by reference**
+  (`InquireAboutReference`: an Inquiry request with the reference as `OriginalReference` and a
+  blank `MerchantReference`, so the SDK mints the inquiry's own id). There is no retry button.
+- **`Failed` with `Failure.OutcomeUnknown`** (everything except `Failure.Unreachable`) carries
+  the reference. Unreachable means the request never left: no reference, no look-up.
+- **`Declined` with `NextStep.InquireByMerchantReference`** means the terminal does not know;
+  it is an unknown outcome, not a refusal.
 - **Web Service `NO_RESPONSE`.** The Web Service HTTP layer has no exception path for a lost
-  answer; a transport error is *synthesised as a decline* with `ResponseCode == "NO_RESPONSE"`.
-  It is classified as an unknown outcome. The same code arriving on an inquiry as `NotFound` is
-  turned into a `Failed` with "An inquiry only reads and changes nothing, so it is safe to try
-  again" — not shown as "Not found", which would read as "it did not happen".
-- **Cancel is an unknown outcome.** `CancelledState` for a money-moving operation is
+  answer; a transport error is synthesised as a decline with `ResponseCode == "NO_RESPONSE"`.
+  It is an unknown outcome. The same code arriving on an inquiry as `NotFound` becomes a
+  `Failed` ("An inquiry only reads and changes nothing, so it is safe to try again"), never
+  "Not found", which would read as "it did not happen".
+- **Cancel is an unknown outcome.** `CancelledState` for a money-moving type is
   `Failed("You stopped waiting for the terminal. This does not cancel the transaction: ...",
-  reference)`. Cancel only stops the *wait*; if the request already reached the terminal it can
-  still complete. Inquiry is read-only, so cancelling it is just `Idle`. Cancelling during the
-  probe (nothing sent) is also `Idle`.
-- **Auto-inquiry `Recovered`.** With `AutoInquireOnFailure` on (the SDK default), a lost answer is
-  followed by an inquiry by the SDK. If it finds the transaction, `FromFailed` returns an
-  `Inquired` state with `RecoveredFromFailure: true` and the dialog says the answer was lost but
-  the terminal knows the transaction — do not send it again. `Recovered` of `NotFound` or `Failed`
-  is turned into a note ("...does not prove nothing was charged — look it up again...").
-- **A failed inquiry is safe to repeat and says so**, unlike a failed sale. When the look-up was
-  *by reference*, the failed state keeps that reference (`RetryableReference` in
-  [`TransactionOutcomes.cs`](../src/AmwalECR.Example.Core/Transaction/TransactionOutcomes.cs)),
-  so the dialog still offers "Inquire by reference" and reads "Outcome unknown". The reference
-  is usually one the app generated for a lost sale, so it is in no form field: dropping it would
-  leave "safe to try again" with nothing to try.
+  reference)`. Cancelling an inquiry, or anything during the probe, is `Idle`.
+- **Auto-inquiry.** With `AutoInquireOnFailure` (SDK default, Wi-Fi), a lost answer is followed
+  by an SDK inquiry; if it finds the transaction, `FromFailed` returns `Inquired` with
+  `RecoveredFromFailure: true` (the recovered request's own `MerchantReference` stays blank).
+  `NotFound` or `Failed` recoveries become a note that this does not prove nothing was charged.
+- **A failed inquiry is safe to repeat and says so.** When the look-up was by reference, the
+  failed state keeps that reference (`RetryableReference`), so the dialog still reads "Outcome
+  unknown" and offers the look-up; the reference is usually one the app generated, so it is in
+  no form field.
 
-## h. Result presentation and the receipt QR
+### Operation countdown
 
-[`ResultPresenter`](../src/AmwalECR.Example.Core/Transaction/ResultPresenter.cs) turns a
-`TransactionState` into a `ResultDialogModel` — headline, tone (`Approved`/`Declined`, which
-drives the green tick or red cross), amount, message, fields, hints, note, raw payload, an
-optional `InquirableReference` and receipt flags. Pure, so the wording is testable.
+`OperationTimer(RemainingSeconds, TotalSeconds)` drives the countdown on the transaction screen
+and in the result dialog while a receipt is fetched. `TransactionViewModel.Start` starts it with
+`SelectedConfig.EcrConfig.ResponseTimeout` (120 s Wi-Fi, 130 s Web Service; floor 1 s), restarts
+it when the engine reports `InProgress`, ticks once a second and clears it when the run ends. It
+is display only: the SDK enforces the timeout. `CanCancel` is true while busy or while a receipt
+is being fetched.
+
+## h. Result presentation, Close receipt and the receipt QR
+
+`ResultPresenter` turns a `TransactionState` into a `ResultDialogModel` (headline, tone, amount,
+message, fields, hints, note, raw payload, optional `InquirableReference`, receipt flags). It is
+pure, so the wording is testable.
 
 | State | Headline | Notes |
 |---|---|---|
-| `Completed(Approved)` | `Approved`, or `Partially approved` | Fields: Auth code (omitted for a void: the terminal returns a placeholder), Card, Reference. Empty fields are dropped. A partial approval gets a message with both figures (`Only 50.000 of 961.100 was approved. Collect the difference by another means.`). |
-| `Completed(Declined)` | `Declined` | The message is the terminal's own words, read from the raw answer by the SDK's `EcrWireResponse.DisplayMessageFromRaw`. |
-| `Inquired(Found)` | the **transaction's** status | Not the lookup's: finding a declined sale is a successful inquiry and reads "Declined". Fields: Receipt number, Type, Card, Date/Time. Hints: `Already refunded`, `Can be voided`, `Can be refunded`. |
-| `Inquired(NotFound)` | `Not found` | On Web Service, a short note that "not found" does not prove nothing was charged. |
-| `Failed` with a reference | `Outcome unknown` | Warning text plus the reference (with Copy) and the one action. |
+| `Completed(Approved)` | `Approved` or `Partially approved` | Auth code (omitted for a void: the terminal returns a placeholder), card, reference. Partial: `Only 50.000 of 961.100 was approved. Collect the difference by another means.` |
+| `Completed(Declined)` | `Declined` | The terminal's own words, from the raw answer. |
+| `Inquired(Found)` | the **transaction's** status | Finding a declined sale is a successful inquiry and reads "Declined". Fields: receipt number, type, card, date/time; hints: `Already refunded`, `Can be voided`, `Can be refunded`. |
+| `Inquired(NotFound)` | `Not found` | On Web Service a note that this does not prove nothing was charged. |
+| `Failed` with a reference | `Outcome unknown` | Warning, the reference (Copy) and the one action. |
 | `Failed` without | `Not completed` | Message and note only. |
 
-The raw JSON of the terminal's answer is pretty-printed (`Pretty`) behind a "Show raw response"
-expander with a Copy button. Backend timestamps such as `2026-08-09T16:58:16.804271` are shown as
-`09 Aug 2026 16:58`.
+Raw JSON is pretty-printed behind "Show raw response" with a Copy button. Backend timestamps
+such as `2026-08-09T16:58:16.804271` are shown as `09 Aug 2026 16:58`.
 
-[`ResultDialogViewModel`](../src/AmwalECR.Example/ViewModels/ResultDialogViewModel.cs) wraps the
-model for [`ResultDialogWindow.xaml`](../src/AmwalECR.Example/Views/ResultDialogWindow.xaml). It
-**follows the transaction view-model while open**: a new `State` that is a result rebuilds the
-model (the receipt arriving updates the dialog in place); a state that is *not* a result (the
-look-up offered by the dialog has started) closes it. `OnClosed` calls
-`Transaction.ResultAcknowledged()` unless the close was a hand-off.
-[`ResultDialogPresenter`](../src/AmwalECR.Example/Services/ResultDialogPresenter.cs) opens the
-dialog **from the dispatcher** (`BeginInvoke(Normal)`) rather than inside the state change, so the
-modal loop never runs inside a binding update, and re-checks afterwards in case a result arrived
-while the dialog was closing.
+`ResultDialogViewModel` follows the transaction view-model while open: a new result state
+rebuilds the model (the receipt arriving updates it in place); a non-result state (the look-up
+the dialog offered has started) closes it. `OnClosed` calls `ResultAcknowledged()` unless the
+close was a hand-off. `ResultDialogPresenter` opens the dialog from the dispatcher
+(`BeginInvoke`) so the modal loop never runs inside a binding update.
+
+**Close receipt.** `TransactionEngine.CloseTerminalReceiptAsync` calls
+`session.CloseReceiptAsync` and returns a message (`Terminal is back on its idle screen`,
+`Terminal refused: ...`, `Could not reach the terminal: ...`); it never throws except for
+cancellation. Wi-Fi sends `CLOSE_RECEIPT`; on Web Service the SDK posts `/Ecr/closeReceipt` and
+`originalMerchantReference` must be the sale/void/refund reference (taken from
+`Completed.Result.MerchantReference`), otherwise the app answers
+`Close receipt needs the sale / void / refund reference`. The button (`ShowCloseReceipt`) shows
+on a `Completed` result for Wi-Fi, USB or Web Service terminals, keeps the dialog open, and is
+independent of the dialog's **Close**, which only dismisses.
 
 **Receipt QR.** After an inquiry over Wi-Fi the dialog offers **QR receipt**
-(`ShowReceiptButton`: `OffersReceipt` and `Inquired { Receipt: null, FetchingReceipt: false }`).
-`TransactionViewModel.RequestReceiptAsync` sets `FetchingReceipt`, calls
-`TransactionEngine.FetchReceiptAsync`, and stores the `EcrReceipt` on the `Inquired` state.
-`FetchReceiptAsync` takes the receipt number from the found transaction's `Stan` (falling back to
-the typed one) and the day from its `TransactionTime` (`DayOf` → `yyyyMMdd`, falling back to the
-typed date), re-resolves the config, opens a session and calls `ReceiptAsync`. It never throws
-except for cancellation: failures become `EcrReceipt.Unavailable`. The Web Service transport has no
-receipt operation, so `OffersReceipt` is false there and the dialog shows "The e-receipt QR is
-available over Wi-Fi only." instead of a button.
+(`OffersReceipt` and `Inquired { Receipt: null, FetchingReceipt: false }`).
+`FetchReceiptAsync` takes the receipt number from the found transaction's `Stan` (falling back
+to the typed one) and the day from `TransactionTime` (`DayOf` -> `yyyyMMdd`, falling back to the
+typed date), re-resolves the config and calls `ReceiptAsync`. Failures become
+`EcrReceipt.Unavailable`; Cancel during the fetch yields "Receipt fetch cancelled". Web Service
+has no receipt operation, so the dialog shows "The e-receipt QR is available over Wi-Fi only."
 
-The QR itself is drawn on the PC by
-[`QrCodeGenerator`](../src/AmwalECR.Example/Services/QrCodeGenerator.cs): QRCoder 1.6.0,
-`PngByteQRCode` (pure managed, no `System.Drawing`), error-correction level M, 8 px per module, a
-frozen `BitmapImage`. `QrCodeConverter` feeds it from the `ReceiptUrl` binding. Drawing locally
-means it appears the instant the URL arrives and survives the network dropping. If generation
-fails (content too long), the converter returns `null` and the URL is still shown in a read-only
-text box beneath it. The receipt fetch uses `CancellationToken.None`: there is no way to cancel
-it, but closing the dialog discards the result.
+`QrCodeGenerator` draws the QR on the PC: QRCoder `PngByteQRCode` (managed, no `System.Drawing`),
+level M, 8 px per module, a frozen `BitmapImage`. If generation fails the URL is still shown in
+a read-only text box.
 
 ## i. Logging
 
-`IEcrLogger` is the SDK's one-method logging seam (`Debug(string)`); the SDK is silent by default
-and writes each request and response, the signing details and probe failures to whatever logger it
-is given.
+`IEcrLogger` is the SDK's one-method seam (`Debug(string)`); the SDK writes each request and
+answer, signing details and probe failures to whatever logger it is given.
 
 ```
-SDK  --Debug(msg)-->  IEcrLogger  --Append(tag, msg)-->  LogBuffer  --Changed-->  LogViewModel  -->  LogView
-                                                            |
-                                                            +--mirror--> Debug.WriteLine
+SDK --Debug(msg)--> IEcrLogger --Append(tag, msg)--> LogBuffer --Changed--> LogViewModel --> LogView
+                                                        +--mirror--> Debug.WriteLine
 ```
 
-- [`LogBuffer`](../src/AmwalECR.Example.Core/Logging/LogBuffer.cs): a `LinkedList<string>` of the
-  last **500** lines under a lock (`DefaultCapacity`), each stamped `HH:mm:ss.fff <tag> <message>`.
-  A mirror callback (a broken one is swallowed: "A broken mirror must never break a payment
-  flow") and a `Changed` event raised on the writing thread. `Snapshot()` returns the whole text.
-- **Two tags, one buffer.** `App` makes two loggers, `Ecr` and `EcrWebService`;
-  `TransactionEngine.LoggerFor(config)` picks by transport. The app writes its own
-  `[App]`/`[Wi-Fi/LAN]`/`[Web Service]` lines through the same logger: the selected terminal and
-  its config issues (`LogSelectedConfig`, on startup and on every selection), a cancelled wait, an
-  unexpected error, a failed receipt.
-- **The key is never logged.** The SDK logs only whether a signing key is present
-  (`signing key (<label>): configured` / `not configured`, from `EcrDiagnostics.SecretFingerprint`);
-  the sample's own log lines contain no key. The screen does show the key's length in the config
-  card (`configured (32 hex chars)`) and the Show button reveals it in the settings; that is on the
-  operator's own screen, not in the log.
-- **What the log does contain:** the requests and answers, including the **masked** card number.
-  The panel says so, and so does the README; treat copied logs as transaction records.
-- [`LogViewModel`](../src/AmwalECR.Example/ViewModels/LogViewModel.cs) and
-  [`LogView.xaml`](../src/AmwalECR.Example/Views/LogView.xaml): a collapsed `Expander` at the
-  bottom of the window (200 px box, auto-scroll to the newest line), **Copy log** (through
-  `IClipboardService.TryCopy`, which reports failure instead of throwing when another process holds
-  the clipboard) and **Clear**. The `Summary` header shows the line count.
+- `LogBuffer` keeps the last **500** lines under a lock, each stamped `HH:mm:ss.fff <tag>
+  <message>`. A broken mirror callback is swallowed so it can never break a payment.
+- Two tags, one buffer: `Ecr` and `EcrWebService`; `TransactionEngine.LoggerFor(config)` picks by
+  transport. The app writes its own `[App]` / `[Wi-Fi/LAN]` / `[Web Service]` lines (selected
+  terminal and issues, a cancelled wait, an unexpected error, a failed receipt or close receipt).
+- **The key is never logged**: the SDK logs only whether a key is present. The log does contain
+  requests and answers with the **masked** card number; treat copied logs as transaction records.
+- `LogView` is a collapsed `Expander` (auto-scroll, **Copy log** through
+  `IClipboardService.TryCopy`, **Clear**).
 
 ## j. Threading
 
-- **Commands.** `SubmitCommand` is a synchronous `[RelayCommand]` that validates and calls
-  `Start`, which sets `Checking`, creates a **new `CancellationTokenSource` per transaction**, and
-  fires `RunAsync` (an `async Task`, not `async void`) without awaiting it; `RunAsync` has its own
-  `try/catch` so the screen can never be left spinning, and disposes its own CTS in `finally`
-  (`_cts` is cleared only if it is still that one). `CancelCommand` is `_cts?.Cancel()`.
-  `RequestReceiptCommand` and `InquireByReferenceCommand` live on the dialog view-model; the
-  receipt one is an async command and disables itself while running.
-- **UI-thread marshalling.** `RunAsync` is entered from the UI thread. The view-model awaits
-  without `ConfigureAwait(false)`, and the engine uses **`ConfigureAwait(true)`** on every await
-  in `RunAsync`/`ExecuteAsync`/`FetchReceiptAsync`, so `report(InProgress)` and the returned state
-  are set on the UI thread and the `PropertyChanged` they raise is safe for bindings. This is a
-  Core library relying on the *caller's* synchronisation context: under a WPF dispatcher that
-  marshals back; under ASP.NET Core (no context) it is a no-op, which is what the web sample
-  needs. The SDK itself uses `ConfigureAwait(false)` internally and logs from whatever thread
-  its I/O continuation lands on.
-- **Logging is the cross-thread case.** `LogBuffer` is locked and raises `Changed` on the writing
-  thread; `LogViewModel.QueueRefresh` coalesces bursts with an `Interlocked` flag and
-  `Dispatcher.BeginInvoke(Background)`, so a signing exchange that logs a dozen lines causes one
-  refresh, and the `TextBox` is only touched from the UI thread.
-- **One transaction at a time.** `Start` returns immediately if `State.IsBusy`, and the whole form
-  is `IsEnabled="{Binding IsNotBusy}"`. Inquire-by-reference starts through the same `Start`.
-- **Close-window guard.**
-  [`MainWindow.OnClosing`](../src/AmwalECR.Example/MainWindow.xaml.cs) asks (default **No**) when
-  `Transaction.IsBusy`: "Closing now does not cancel it on the terminal, and the outcome will not
-  be shown here." It cancels nothing; nothing in the app can cancel a request that has reached
-  the terminal. The result dialog is modal, so the main window cannot be closed while one is open.
-- **Repository and settings events** fire on the caller's thread. WPF only calls them from the UI
-  thread.
-- `App.DispatcherUnhandledException` catches anything that escapes a UI-thread callback. Exceptions
-  on other threads are not handled there; the async paths above catch their own.
+- `SubmitCommand` validates and calls `Start`, which sets `Checking`, starts the countdown,
+  creates a **new `CancellationTokenSource` per transaction** and fires `RunAsync` (an
+  `async Task`, not `async void`) without awaiting it. `RunAsync` has its own `try/catch` so the
+  screen cannot be left spinning and disposes its CTS in `finally`. `CancelCommand` is
+  `_cts?.Cancel()`.
+- **UI-thread marshalling.** The engine uses `ConfigureAwait(true)` on every await in
+  `RunAsync`/`ExecuteAsync`/`FetchReceiptAsync`, so `report(InProgress)` and the returned state
+  are set on the UI thread. Core relies on the caller's synchronisation context: a WPF dispatcher
+  marshals back; under ASP.NET Core (no context) it is a no-op, which the web sample needs.
+- `LogBuffer` raises `Changed` on the writing thread; `LogViewModel.QueueRefresh` coalesces
+  bursts with an `Interlocked` flag and `Dispatcher.BeginInvoke(Background)`.
+- **One transaction at a time**: `Start` returns if `State.IsBusy`, and the form is disabled
+  while busy. Inquire-by-reference goes through the same `Start`.
+- **Close-window guard**: `MainWindow.OnClosing` asks (default No) while busy. It cancels
+  nothing; the result dialog is modal, so the window cannot be closed while one is open.
+- Repository and settings events fire on the caller's thread (the UI thread in WPF).
 
 ## k. XAML pitfalls
 
-`dotnet build` compiles XAML to BAML, which catches malformed markup and unknown types. It does
-**not** run the window, so anything resolved at load time fails only when the view is first shown,
-as an exception on the UI thread.
+`dotnet build` compiles XAML to BAML but does not run the window, so load-time errors appear only
+when a view is first shown. The one that shipped: properties that bind **two-way by default**
+(`TextBox.Text`, `ComboBox.SelectedItem`, `CheckBox.IsChecked`, `DatePicker.SelectedDate`, ...)
+bound to a **read-only** view-model property throw `InvalidOperationException: A TwoWay or
+OneWayToSource binding cannot work on the read-only property ...` when the view loads (it was
+`DatePicker.DisplayDateEnd` bound to the get-only `LatestDate`). The fix is `Mode=OneWay`, also
+on every `Run.Text`, read-only `TextBox`es and the config card's issue list.
 
-**The one that shipped.** Some control properties bind **two-way by default**
-(`TextBox.Text`, `ComboBox.SelectedItem`, `CheckBox.IsChecked`, `DatePicker.SelectedDate`, ...).
-Bound to a **read-only** view-model property without `Mode=OneWay`, WPF throws
-`InvalidOperationException: A TwoWay or OneWayToSource binding cannot work on the read-only
-property ...` when the view loads. The sample shipped once with the picker's `DisplayDateEnd`
-bound to the get-only `TransactionFormViewModel.LatestDate`; the window threw when the
-transaction view was created. This is not hypothetical: it was reported from a real Windows run
-as "A TwoWay or OneWayToSource binding cannot work on the read-only property 'LatestDate' of type
-'AmwalECR.Example.ViewModels.TransactionFormViewModel'". The line now reads:
+`tools/check-xaml-bindings.py` (Python 3, run by CI) parses every `*.xaml` under
+`src/AmwalECR.Example`, finds attribute-syntax bindings on a table of two-way-by-default control
+properties, collects property names from `ViewModels/*.cs` and Core, and exits 1 when the last
+path segment is read-only and has no `Mode=OneWay`/`OneTime`/`OneWayToSource`.
 
-```xml
-<DatePicker DisplayDateEnd="{Binding Form.LatestDate, Mode=OneWay}"
-            SelectedDate="{Binding Form.OriginalDate, Mode=TwoWay}" ... />
-```
+It does not catch: name collisions (it matches names, not types), `Run.Text`, property-element
+syntax or `Style` setters, binding-path typos, missing `StaticResource` keys, converters without
+`ConvertBack` used two-way, or focus and layout behaviour.
 
-The same rule is why every `Run.Text`, the raw-response and receipt-link `TextBox`es (read-only
-boxes still bind two-way by default), and `Text="{Binding Mode=OneWay}"` on the config card's
-issue list carry an explicit `Mode=OneWay`.
-
-**The guard: [`tools/check-xaml-bindings.py`](../tools/check-xaml-bindings.py).** It needs only
-Python 3:
-
-```
-python3 tools/check-xaml-bindings.py
-```
-
-It parses every `*.xaml` under `src/AmwalECR.Example`, finds attribute-syntax bindings on a table
-of two-way-by-default control properties (`TextBox.Text`, `ComboBox.Selected*`, `CheckBox`/
-`RadioButton`/`ToggleButton.IsChecked`, `Expander.IsExpanded`, `DatePicker`/`Calendar` dates,
-`Slider.Value`, ...), collects property names from `ViewModels/*.cs` and everything in Core
-(`[ObservableProperty]` fields and settable properties as settable; get-only and expression-bodied
-as read-only), and fails when the last segment of a binding path is read-only and has no
-`Mode=OneWay`/`OneTime`/`OneWayToSource`. It prints `<n> two-way-by-default bindings inspected`
-(26 at the time of writing) and exits 1 on a violation. The CI workflow
-([`codemagic.yaml`](../../codemagic.yaml)) runs it.
-
-What it does **not** catch, and nothing else here does either:
-
-- It matches property **names**, not types: a name that is read-only in one class and settable in
-  another counts as settable.
-- It sees only attribute-syntax bindings on its table of controls: not `Run.Text`
-  (two-way by default), not property-element syntax, not `Style` setters.
-- Typos in a binding path (WPF only writes a line to the debugger's Output window), a missing
-  `{StaticResource}` key (a `XamlParseException` at load, not a compile error), a converter with
-  no `ConvertBack` used two-way, and focus, keyboard and layout behaviour.
-
-The checker's control table is conservative by design: an unnecessary `Mode=OneWay` costs nothing,
-a missing one costs a crash on the first screen.
-
-Two smaller conventions used throughout: read-only status text uses `Mode=OneWay` explicitly;
-error text is bound to a string plus a `Has...` bool for `Visibility`, and the message sits under
-the field with `AutomationProperties.HelpText` on the field so a screen reader is pointed at it.
+Conventions: error text is bound to a string plus a `Has...` bool for `Visibility`, with
+`AutomationProperties.HelpText` on the field so a screen reader is pointed at it.
 
 ## l. Tests
 
-Run from `Windows-Native-Example/`:
-
 ```
-dotnet test tests/AmwalECR.Example.Tests     # any OS, .NET 8 SDK
+dotnet test tests/AmwalECR.Example.Tests -p:EcrSdkDependency=project    # 189 tests, any OS
 ```
 
-The test project targets `net8.0` and references **Core only** (xUnit 2.9.2), so it runs on
-macOS and Linux and inherits the SDK dependency choice.
+The test project targets `net8.0`, references **Core only** (xUnit 2.9.2) and inherits the SDK
+dependency choice.
 
 | File | Pins |
 |---|---|
-| [`AmountTests.cs`](../tests/AmwalECR.Example.Tests/AmountTests.cs) | `AmountLimits` bounds, `MaxDigits` (9), three-decimal formatting, minor units, the `AmountEntry` vectors, the README key sequence, zero on empty, backspace on empty, the digit cap |
-| [`FormStateTests.cs`](../tests/AmwalECR.Example.Tests/FormStateTests.cs) | which fields each type shows, the reference-swap, the other-terminal switch, date default and wire format, the amount errors, the request built for each type, a leftover terminal ID not sent, the merchant-reference rules, errors cleared once fixed |
-| [`SelectedTerminalConfigTests.cs`](../tests/AmwalECR.Example.Tests/SelectedTerminalConfigTests.cs) | readiness; a missing, malformed or untrimmed key; missing address; port fallback to 9100; Web Service label, transport and numeric IDs; USB and Bluetooth "not supported"; the LAN key serving Wi-Fi and the other key serving Web Service |
-| [`DataTests.cs`](../tests/AmwalECR.Example.Tests/DataTests.cs) | `Terminal` label, summary and mode mapping; every `TerminalValidator` rule; repository ordering, duplicate serials, edit-in-place, serial change, survival across a restart, `Changed`, the `.unreadable` copy; settings defaults, per-mode keys, trimming and encryption at rest, the undecryptable-file `LoadWarning`; `LogBuffer` capacity, mirror, clear and 8-way concurrent writes |
-| [`OutcomeTests.cs`](../tests/AmwalECR.Example.Tests/OutcomeTests.cs) | every classification in [g](#g-the-transaction-engine-and-state-machine): unknown outcomes offer a look-up and never a retry, unreachable offers none, recovered findings, `NO_RESPONSE`, inquire-by-reference declines, cancellation wording; and every `ResultPresenter` model: headlines, partial approval, void without auth code, fields, hints, receipt offered over Wi-Fi only, time formatting, pretty JSON |
-| [`EngineTests.cs`](../tests/AmwalECR.Example.Tests/EngineTests.cs) | the whole flow against a real socket, below |
+| `AmountTests.cs` | `AmountLimits`, three-decimal formatting, minor units, the `AmountEntry` vectors, the digit cap |
+| `FormStateTests.cs` | fields per type, the reference swap, other-terminal switch, date default and wire format, amount errors, the request built per type, merchant-reference rules |
+| `SelectedTerminalConfigTests.cs` | readiness; missing, malformed or untrimmed key; missing address; port fallback; Web Service label, transport and numeric IDs; USB and Bluetooth "not supported"; the right key per mode |
+| `DataTests.cs` | `Terminal` and `TerminalValidator`; repository ordering, duplicates, restart, `.unreadable` copy; settings defaults, per-mode keys, encryption at rest, `LoadWarning`; `LogBuffer` |
+| `OutcomeTests.cs` | every classification in [g](#g-the-transaction-engine-state-machine-and-payment-safety-rules) and every `ResultPresenter` model |
+| `EngineTests.cs` | the whole flow against a real socket (below) |
 
-**The in-process signed terminal.** `FakeTerminal` in `EngineTests.cs` is a `TcpListener` on
-loopback with an ephemeral port that speaks the real protocol: a 2-byte big-endian length, then
-UTF-8 JSON; it echoes the request's `nonce` and signs the answer (HMAC-SHA256 over the sorted
-top-level scalar `key=value` pairs joined by `&`, key hex-decoded, upper-case hex). A handler
-function decides each answer: return a `JsonObject` to answer, or `null` to hang up without
-answering. A connection that sends nothing is a reachability probe. So the tests exercise the real
-SDK — plan, probe, sign, send, verify, classify — for: approval (asserting the wire fields,
-including `000000001234`), a generated reference, unreachable (and that `InProgress` was never
-reported), a plan with issues (and that no request reached the terminal), USB refused, an
-unregistered terminal, a lost answer (asserting exactly one `SALE`), a lost answer the SDK
-recovers, a wrong key, cancel during the wait and before the send, inquiry by receipt and by
+`FakeTerminal` in `EngineTests.cs` is a `TcpListener` on loopback that speaks the real protocol (a
+2-byte big-endian length, then UTF-8 JSON), echoes the request's `nonce` and signs the answer
+(HMAC-SHA256 over the sorted top-level scalar `key=value` pairs joined by `&`, hex-decoded key,
+upper-case hex). A handler returns a `JsonObject` to answer or `null` to hang up; a connection
+that sends nothing is a probe. So the tests exercise the real SDK (plan, probe, sign, send,
+verify, classify) for approval (asserting `000000001234`), a generated reference, unreachable, a
+plan with issues, USB refused, an unregistered terminal, a lost answer (exactly one `SALE`), a
+recovered answer, a wrong key, cancel before and during the wait, inquiry by receipt and by
 reference, void and refund fields, and the receipt fetch. It is the C# twin of
-[`tools/fake_pos_server_signed.py`](../tools/fake_pos_server_signed.py), with one difference: the
-Python one also verifies the request signature and refuses a repeated nonce; the C# one does not.
+`tools/fake_pos_server_signed.py`, except the Python one also refuses a repeated nonce.
 
-There is no loopback for the **Web Service** transport; its classification is covered only by the
-pure `OutcomeTests`.
-
-Other checks (not xUnit): `python3 tools/check-xaml-bindings.py` (see [k](#k-xaml-pitfalls)).
-The web sample adds its own tests and scripts, listed in the [umbrella README](../../README.md#tests-and-checks).
+There is no loopback for Web Service; its classification is covered only by `OutcomeTests`.
+Nothing tests the view-models or the running window.
 
 ## m. Extension recipes
 
-Each recipe lists the files in the order to touch them. After any change: run the tests and
-`python3 tools/check-xaml-bindings.py`, and **launch the app** (see [o](#o-known-limitations)).
+After any change: run the tests and `python3 tools/check-xaml-bindings.py`, and launch the app.
 
 ### Add a field to the form
 
-Example: an optional value the operator types for a sale. First check the SDK call can actually
-carry it — `SaleAsync(amount, merchantReference, ct)` takes only those; a field the SDK does not
-accept can only influence what the app does around the call (for example, composing the
-reference).
+First check the SDK call can carry it (`SaleAsync(amount, merchantReference, ct)` takes only
+those). Then, in order:
 
-1. [`Core/Transaction/TransactionFormState.cs`](../src/AmwalECR.Example.Core/Transaction/TransactionFormState.cs)
-   — the property, a `Show...` flag if it is conditional, its rule in `Validated`, a slot in
-   `FormErrors`, and the mapping into `TransactionRequest`.
-2. [`Core/Transaction/TransactionState.cs`](../src/AmwalECR.Example.Core/Transaction/TransactionState.cs)
-   — the property on `TransactionRequest`.
-3. [`Core/Services/TransactionEngine.cs`](../src/AmwalECR.Example.Core/Services/TransactionEngine.cs)
-   `ExecuteAsync` — use it.
-4. [`ViewModels/TransactionFormViewModel.cs`](../src/AmwalECR.Example/ViewModels/TransactionFormViewModel.cs)
-   — the property with the `Set(_state with { ... Errors = ... })` pattern, the `...Error` and
-   `Has...Error` read-only properties, and `ClearAfterResult` if it is per-transaction.
-5. [`Views/TransactionView.xaml`](../src/AmwalECR.Example/Views/TransactionView.xaml) — copy an
-   existing block (label with access key and `Target`, box, `ui:FieldState.HasError`,
-   `AutomationProperties.HelpText`, error text, caption). Bind read-only properties with
-   `Mode=OneWay`.
-6. Tests in `FormStateTests.cs` and `EngineTests.cs`; run the XAML checker.
-7. The web sample maps its own DTO onto `TransactionFormState`
-   (`AmwalECR-Web-Example/src/AmwalECR.WebExample/Api/Dtos.cs`, `TransactionEndpoints.cs`,
-   `MetaEndpoint.cs`), so a field added here needs a matching change there.
+1. `Core/Transaction/TransactionFormState.cs`: the property, a `Show...` flag if conditional, its
+   rule in `Validated`, a slot in `FormErrors`, the mapping into `TransactionRequest`.
+2. `Core/Transaction/TransactionState.cs`: the property on `TransactionRequest`.
+3. `Core/Services/TransactionEngine.cs` `ExecuteAsync`: use it.
+4. `ViewModels/TransactionFormViewModel.cs`: the property, `...Error`/`Has...Error`, and
+   `ClearAfterResult` if per-transaction.
+5. `Views/TransactionView.xaml`: copy an existing block; bind read-only properties `Mode=OneWay`.
+6. Tests in `FormStateTests.cs` and `EngineTests.cs`.
+7. The web sample maps its own DTO onto `TransactionFormState` (`Api/Dtos.cs`,
+   `TransactionEndpoints.cs`, `MetaEndpoint.cs`); mirror the change there.
 
-### Add a new transaction type
+### Add a transaction type
 
 `EcrTransactionType` and its flags (`RequiresAmount`, `RequiresOriginalStan`,
-`RequiresOriginalDate`, `MovesMoney`, `AllowsOtherTerminal`, `MenuOptions`) live in the **SDK**.
-The sample's form follows them. `Receipt` already exists in the enum but is deliberately not in
-`MenuOptions`: it follows an inquiry result rather than being chosen.
+`RequiresOriginalDate`, `MovesMoney`, `AllowsOtherTerminal`, `MenuOptions`) live in the SDK; add
+the type there first. Then the `switch` in `TransactionEngine.ExecuteAsync` (its default arm
+throws), classification in `TransactionOutcomes` if the result shape differs, wording in
+`ResultPresenter`, and `TransactionFormViewModel` (`StartButtonText`, `AmountHelp`). Get
+`MovesMoney` right: it decides whether the operation gets a reference and whether a cancel is an
+unknown outcome. `Receipt` and `CloseReceipt` exist in the enum but are not in `MenuOptions`;
+they follow a result.
 
-- A type that is new to the SDK: add it there first (each extension method throws
-  `ArgumentOutOfRangeException` for an unknown value, so a missed one fails loudly), then here.
-- In Core: the `switch` in `TransactionEngine.ExecuteAsync` (its default arm throws
-  `InvalidOperationException("... is not run from here")`); classification in
-  `TransactionOutcomes` if the result shape differs; the wording in `ResultPresenter`.
-- In WPF: `TransactionFormViewModel.TypeOptions` (currently `EcrTransactionTypes.MenuOptions`),
-  `StartButtonText`, `AmountHelp`; the display name comes from `TransactionTypeNameConverter`.
-- Decide what an unknown outcome means for it (`MovesMoney`): if it moves money it needs a
-  reference and the whole unknown-outcome contract in [g](#g-the-transaction-engine-and-state-machine).
+### Add a USB channel
 
-### Add a terminal mode or transport (a custom `IEcrChannel` for USB)
+`EcrLink` is a closed hierarchy; a new *channel* under `EcrLink.UsbCable` needs no SDK change:
+`EcrSessions.Open` accepts a `Func<IEcrChannel>`. An `IEcrChannel` only moves bytes (framing
+helpers `EcrFrames.Wrap` / `ReadBodyAsync`); signing and verification stay in the SDK. Wire it:
 
-The SDK's `EcrLink` is a **closed** hierarchy (`Lan`, `UsbCable`, `WebService`). A new *link kind*
-needs an SDK change. A new *channel* under `EcrLink.UsbCable` does not: `EcrSessions.Open` accepts a
-`Func<IEcrChannel>` for it. An `IEcrChannel` only moves bytes; signing, verification and response
-codes stay in the SDK. Sketch (the framing helpers are `EcrFrames.Wrap` and `EcrFrames.ReadBodyAsync`):
+1. `Core/Data/EcrMode.cs`: `IsSupportedInExample` returns true for `UsbCable` (the edit
+   dialog's hint and the config card's issue both derive from it).
+2. `TransactionEngine.OpenSession` passes `usbChannel: null` today; take a
+   `Func<IEcrChannel>?` in the constructor and pass it through.
+3. `App.xaml.cs`: supply `() => new UsbEcrChannel()`, in the WPF project if it needs a Windows
+   API (Core must stay `net8.0`).
+4. Tests with an in-memory `IEcrChannel` (see `FakeChannel.cs` in the SDK repo's tests):
+   probe failure, `EcrChannelTimeout` (must read as an unknown outcome), a lost answer.
 
-```csharp
-public sealed class UsbEcrChannel : IEcrChannel
-{
-    public string Endpoint => "USB cable";   // shown to the operator when the link fails
-    public string Host => "USB cable";
-    public int Port => 0;                    // not a socket
+Bluetooth has no SDK link; `ToLink` maps it to a LAN link as a placeholder.
 
-    public Task<string?> ProbeAsync(TimeSpan timeout, CancellationToken ct = default)
-        => Task.FromResult<string?>(DeviceIsPluggedIn() ? null : "no terminal found on USB");
-
-    public async Task<byte[]> ExchangeAsync(byte[] body, TimeSpan timeout, CancellationToken ct = default)
-    {
-        using var stream = OpenDeviceStream();
-        var frame = EcrFrames.Wrap(body);
-        await stream.WriteAsync(frame, 0, frame.Length, ct);
-        // Answer within `timeout`, otherwise: throw new EcrChannelTimeout("...") -- an unknown
-        // outcome, not a refusal. Any other broken link: throw an IOException.
-        return await EcrFrames.ReadBodyAsync(stream, ct);
-    }
-}
-```
-
-Wire it up:
-
-1. [`Core/Data/EcrMode.cs`](../src/AmwalECR.Example.Core/Data/EcrMode.cs) —
-   `IsSupportedInExample` returns true for `UsbCable`. The edit dialog's "Not available in this
-   sample" hint and the config card's "not supported" issue both derive from it, so they
-   disappear on their own. `SelectedTerminalConfig.ToLink` already maps `UsbCable` to
-   `EcrLink.UsbCable`, and `Terminal.ConnectionSummary` already prints `USB cable`.
-2. [`Core/Services/TransactionEngine.cs`](../src/AmwalECR.Example.Core/Services/TransactionEngine.cs)
-   — `OpenSession` passes `usbChannel: null` today. Take a `Func<IEcrChannel>?` in the constructor
-   and pass it through (the two call sites, `RunAsync` and `FetchReceiptAsync`, share
-   `OpenSession`). Without a factory `Open` throws `InvalidOperationException`, which the engine
-   already turns into a `Failed` message.
-3. [`App.xaml.cs`](../src/AmwalECR.Example/App.xaml.cs) — supply `() => new UsbEcrChannel()`.
-   Put the channel in the WPF project (or its own) if it needs a Windows API; Core must stay
-   `net8.0`.
-4. Tests: an in-memory `IEcrChannel` in `EngineTests.cs` (the SDK repo's
-   `tests/AmwalPay.Ecr.Tests/Support/FakeChannel.cs` is a model), covering probe failure, a
-   timeout (`EcrChannelTimeout` must read as an unknown outcome), and a lost answer.
-5. `EcrModes.IsIpBased` is `Wifi` only, so the edit form asks for no address; nothing to change.
-
-Bluetooth has no SDK link at all today, and `ToLink` maps it to a LAN link as a placeholder.
-
-### Change branding or theme
+### Branding and storage
 
 | What | Where |
 |---|---|
-| Colours (brand blue, approved green, declined red, the neutral scheme) | [`Themes/Colors.xaml`](../src/AmwalECR.Example/Themes/Colors.xaml) — brushes are referenced by key everywhere, so edit values here |
-| Text, field, button and card styles; focus and error outlines | [`Themes/Styles.xaml`](../src/AmwalECR.Example/Themes/Styles.xaml) |
-| Icons and the currency symbol (OMR glyph, tick and cross) | [`Themes/Icons.xaml`](../src/AmwalECR.Example/Themes/Icons.xaml) |
-| Window title, app bar | [`MainWindow.xaml`](../src/AmwalECR.Example/MainWindow.xaml) (`Title`), `MainViewModel.Title` (`ECR`, `POS terminals`) |
-| Executable name, product, title | [`AmwalECR.Example.csproj`](../src/AmwalECR.Example/AmwalECR.Example.csproj) (`AssemblyName`, `ApplicationTitle`, `Product`) |
-| Currency | The label `Amount (OMR)` in `TransactionView.xaml`; the symbol in `ResultDialogWindow.xaml`; `AmountLimits` (`FractionDigits`, `Min`, `Max`) and `AmountEntry` for a currency that is not three-decimal |
-| Data folder | `App.DataDirectory` (`AmwalECR-Example` under `%APPDATA%`) — changing it orphans existing files |
+| Colours | `Themes/Colors.xaml` (brushes are referenced by key) |
+| Styles, focus and error outlines | `Themes/Styles.xaml` |
+| Icons, currency glyph | `Themes/Icons.xaml` |
+| Window title, app bar | `MainWindow.xaml`, `MainViewModel.Title` |
+| Executable name, product | `AmwalECR.Example.csproj` |
+| Currency | `Amount (OMR)` label in `TransactionView.xaml`, symbol in `ResultDialogWindow.xaml`, `AmountLimits`/`AmountEntry` for a non-three-decimal currency |
+| Data folder | `App.DataDirectory`; changing it orphans existing files |
 
-### Swap storage
+To swap storage, implement `ISecretProtector` (machine-scope DPAPI, a key vault) and pass it in
+`App.OnStartup`; the web sample is the worked example. `TerminalRepository` and
+`EcrExampleSettings` are concrete sealed classes: extract an interface (`GetAll`,
+`FindBySerial`, `Save`, `Delete`, `Changed`, `LoadWarning`) and update `TransactionEngine`,
+`TransactionViewModel`, `TerminalsViewModel`, `TerminalEditViewModel` and `App.xaml.cs`; keep
+the serial as the key, the `SaveResult` contract and "write first, then update memory".
 
-- **Secrets:** implement `ISecretProtector` (machine-scope DPAPI, a key vault, ...) and pass it in
-  `App.OnStartup`. The web sample is the worked example: it supplies an ASP.NET Core Data
-  Protection implementation.
-- **Terminals:** `TerminalRepository` is a concrete, sealed class with no interface. To use a
-  database, extract an interface with `GetAll`, `FindBySerial`, `Save`, `Delete`, `Changed` and
-  `LoadWarning`, implement it, and change the five consumers: `TransactionEngine`,
-  `TransactionViewModel`, `TerminalsViewModel`, `TerminalEditViewModel` and `App.xaml.cs`. Keep the
-  serial as the key, the `SaveResult` contract, and "write first, then update memory".
-- **Settings:** `EcrExampleSettings` is likewise concrete; extract the same way if the keys must
-  come from elsewhere.
+## n. Known limitations
 
-## n. Building, publishing, running
-
-Verified minimums:
-
-| | |
-|---|---|
-| Run the WPF app | Windows 10 1809+ or Windows 11; .NET 8 SDK (framework-dependent) or nothing (the published self-contained build) |
-| Build the WPF app on macOS/Linux | an SDK that ships the Windows Desktop targets, e.g. the **.NET 10 SDK**; **not** Homebrew's .NET 8 SDK (`MSB4019`: `Microsoft.NET.Sdk.WindowsDesktop.targets` not found). `EnableWindowsTargeting` is set in [`Directory.Build.props`](../Directory.Build.props) |
-| Build and test Core, the tests and the web sample | .NET 8 SDK on any OS |
-
-**Dates to act on.** The samples target .NET 8, and Microsoft ends support for .NET 8 (and .NET 9) on
-**November 10, 2026**. Before then, move the projects to `net10.0` (and `net10.0-windows` for the WPF
-app); .NET 10 is supported until November 14, 2028. This is a maintenance note, not a code change made
-here. The SDK's own support floor, including the .NET Framework 4.6.2 end date of January 12, 2027, is in
-its [compatibility guide](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/compatibility.md#support-calendar).
-
-```powershell
-# Windows: run
-dotnet run --project src/AmwalECR.Example
-
-# macOS/Linux with the .NET 10 SDK: compile-check the whole solution
-/usr/local/share/dotnet/dotnet build AmwalECR-Example.sln
-```
-
-**Publish** a self-contained single-file executable (the command CI uses, from
-`Windows-Native-Example/`; it works from macOS with the .NET 10 SDK too):
-
-```
-dotnet publish src/AmwalECR.Example/AmwalECR.Example.csproj -c Release -r win-x64 \
-  --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:EnableCompressionInSingleFile=true -p:DebugType=none -o dist/win-x64
-```
-
-Repeat with `-r win-arm64`. The result is one `AmwalECR.Example.exe` of about 66 MB. The
-[`codemagic.yaml`](../../codemagic.yaml) workflow does this for both runtimes, copies `tools/`
-(minus `vm/`) next to the exe and zips each to `AmwalECR-Example-<rid>.zip`; it runs from the
-repository root, so its `dist\` is `<repo>/dist`, while a local publish from this folder lands in
-`Windows-Native-Example/dist/`. The build is **unsigned**: Windows SmartScreen will warn on first
-run ("More info", then "Run anyway"). `dist/` is git-ignored.
-
-**Switching the SDK dependency.** `EcrSdkDependency` is `project` (default: the sibling checkout
-`../../AmwalECR-Windows` relative to this folder, override the path with `-p:EcrSdkProjectPath=`)
-or `nuget` (`-p:EcrSdkVersion=`, default `1.0.0`). Anything else fails the build with
-`EcrSdkDependency must be 'project' or 'nuget'`; a missing checkout fails with an explicit message
-from the `EcrSdkProjectExists` target instead of MSBuild's "project file not found". Core, the
-WPF app, the tests and the web sample share Core's `obj`: after switching modes, restore again.
-
-**The VM route** (WPF only runs on Windows; a container cannot show a window). [`tools/vm/`](../tools/vm/README.md):
-`prepare-on-mac.sh` zips the SDK and both samples (without `bin/`, `obj/`, `dist/`), serves the zip
-over HTTP on port 8000 and starts the signed fake terminal; `Setup-And-Run.ps1` inside the VM
-installs the .NET 8 SDK with winget if needed, downloads and unpacks to `C:\amwal`, and runs the
-app in Release. Layout inside the VM matches a developer machine, so `project` mode resolves the
-SDK the same way.
-
-## o. Known limitations
-
-Be sceptical of anything that says "works" without this list.
-
-- **The WPF app has not been exercised in a real WPF session by its authors.** It was written and
-  checked on macOS: it compiles (0 warnings, 0 errors, `TreatWarningsAsErrors` is on), Core has an
-  automated test suite that passes, and the binding checker passes. The only Windows run on record was
-  reported by a user, and it failed at load: a `DatePicker.DisplayDateEnd` bound to a read-only
-  property (fixed; see the XAML pitfalls section). That is exactly the class of bug the build cannot
-  see, so **runtime-only** behaviour is still unverified: missing
-`StaticResource` keys and template errors (a load-time exception), focus order and default
-  buttons, `AmountInput` under a real keyboard and IME, the DPAPI round trip on a real profile,
-  the result dialog's sizing and access keys, the QR bitmap, dark or high-contrast themes,
-  HiDPI. The published executables were built, not launched. First job on a Windows machine:
-  run the app, go through the terminals screen, one sale of each outcome against the fake
-  terminal, and the receipt.
-- **The view-models have no tests.** They live in the `net8.0-windows` project, which the
-  `net8.0` test project cannot reference on macOS. `TransactionViewModel` (state, the CTS, the
-  receipt hand-off), `ResultDialogViewModel` (follow-and-close), `TerminalEditViewModel` and
-  `LogViewModel` are unexercised. The logic that matters most is in Core precisely because of this.
-- **No UI-automation tests** (no FlaUI/WinAppDriver), so nothing checks that the screen and the
-  view-model agree.
-- **USB cable and Bluetooth are not supported.** They can be registered so a terminal list matches
-  the Android one, but Start stays disabled. The SDK ships no USB channel, and there is no SDK link
-  for Bluetooth (recipe in [m](#m-extension-recipes)).
-- **Web Service has no fake terminal and no loopback test.** It needs the real backend
-  (environment, merchant and terminal IDs, the Web Service key). Only its result classification
-  is unit-tested. Receipts are not offered over it.
-- **Amount limit is a constant** (`100000.000`); a real terminal takes it from the server.
-- **No single-instance guard.** The locks are in-process, and both files are read once at
-  start-up; two running copies would overwrite each other's terminal list.
-- **The receipt fetch cannot be cancelled** and uses the SDK's response timeout.
-- **Accessibility** is designed in (access keys, `AutomationProperties` names, help text, live
-  regions on status and headline, keyboard-only flow, a default button per dialog) but has not
-  been checked with Narrator or contrast tools.
-- **Not localised**; the currency label and symbol are hard-coded to OMR.
-- **NuGet mode** (`-p:EcrSdkDependency=nuget`) was exercised against a locally packed `AmwalPay.Ecr` from a
-  samples-only clone (all projects build, 189 tests pass, the SDK resolves as a package, `lib/net8.0`); it has
-  not been run against nuget.org because the package is not published. Use
-  `AmwalECR-Example.NuGet.slnf`, not the `.sln`, in this mode (the `.sln` lists the SDK project).
+- **No tests of the window or the view-models.** They live in the `net8.0-windows` project, which
+  the `net8.0` test project cannot reference. Runtime-only behaviour (load-time `StaticResource`
+  errors, focus order, `AmountInput` under a real keyboard and IME, DPAPI on a real profile,
+  HiDPI, high-contrast) is checked by hand.
+- No UI-automation tests; Accessibility (access keys, automation names, live regions) is
+  designed in but not verified with Narrator or contrast tools.
+- **USB cable and Bluetooth are not supported** (no SDK USB channel or Bluetooth link; recipe
+  above). App-to-app is not offered.
+- **Web Service has no fake Hub and no loopback test**; it needs the real backend. Receipts are
+  not offered over it. The fake terminal has no `CLOSE_RECEIPT` handler.
+- **The amount limit is a constant** (`100000.000`); a real terminal takes it from the server.
+- **No single-instance guard.** Both files are read once at start-up, so two copies overwrite
+  each other's terminal list.
+- Not localised; the currency label and symbol are hard-coded to OMR.
+- **The SDK dependency.** The default `nuget` build fails until `AmwalPay.Ecr` 1.0.2 is
+  published (the samples use `CloseReceiptAsync`); build with `-p:EcrSdkDependency=project`.
+- The samples target .NET 8, which Microsoft stops supporting on 10 Nov 2026.

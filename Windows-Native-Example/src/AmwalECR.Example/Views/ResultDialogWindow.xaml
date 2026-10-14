@@ -119,16 +119,17 @@
                     transaction may have completed. Looking it up by its reference is the
                     only action offered; there is deliberately no retry.
                 -->
+                <!--
+                    Unknown outcome: show the reference for reconciliation, but do not
+                    offer an inquire shortcut from this dialog — the operator looks it
+                    up from the form (same as the Android simulator).
+                -->
                 <StackPanel Margin="0,16,0,0"
                             Visibility="{Binding IsUnknownOutcome, Converter={StaticResource BoolToVisibility}}">
                     <TextBlock Style="{StaticResource BodyText}"
                                FontWeight="SemiBold"
                                Text="{Binding UnknownOutcomeWarning}" />
-                    <Button Style="{StaticResource OutlinedButton}"
-                            Content="_Inquire by reference"
-                            Command="{Binding InquireByReferenceCommand}"
-                            Margin="0,12,0,0" />
-                    <Grid Margin="0,8,0,0">
+                    <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -152,13 +153,30 @@
                             Command="{Binding RequestReceiptCommand}"
                             Visibility="{Binding ShowReceiptButton, Converter={StaticResource BoolToVisibility}}" />
 
-                    <StackPanel Orientation="Horizontal"
-                                Visibility="{Binding ReceiptFetching, Converter={StaticResource BoolToVisibility}}">
-                        <ProgressBar IsIndeterminate="True" Width="80" Height="6" VerticalAlignment="Center" />
-                        <TextBlock Style="{StaticResource BodyText}"
-                                   Margin="12,0,0,0"
-                                   Text="Fetching the receipt&#x2026;"
-                                   AutomationProperties.LiveSetting="Polite" />
+                    <StackPanel Visibility="{Binding ReceiptFetching, Converter={StaticResource BoolToVisibility}}">
+                        <StackPanel Orientation="Horizontal">
+                            <ProgressBar IsIndeterminate="True" Width="80" Height="6" VerticalAlignment="Center" />
+                            <TextBlock Style="{StaticResource BodyText}"
+                                       Margin="12,0,0,0"
+                                       Text="Fetching the receipt&#x2026;"
+                                       AutomationProperties.LiveSetting="Polite" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal"
+                                    Margin="0,8,0,0"
+                                    Visibility="{Binding HasOperationTimer, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Style="{StaticResource MonoText}"
+                                       FontWeight="SemiBold"
+                                       Text="{Binding CountdownLabel}" />
+                            <TextBlock Style="{StaticResource CaptionText}"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding CountdownCaption}" />
+                        </StackPanel>
+                        <Button Style="{StaticResource OutlinedButton}"
+                                Content="_Cancel operation"
+                                Command="{Binding CancelReceiptCommand}"
+                                HorizontalAlignment="Left"
+                                Margin="0,8,0,0" />
                     </StackPanel>
 
                     <StackPanel Visibility="{Binding HasReceiptQr, Converter={StaticResource BoolToVisibility}}">
@@ -236,15 +254,36 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Button x:Name="CloseButton"
-                Grid.Row="1"
-                Style="{StaticResource PrimaryButton}"
-                Content="_Close"
-                Command="{Binding CloseCommand}"
-                IsDefault="True"
-                HorizontalAlignment="Right"
-                MinHeight="40"
-                MinWidth="96"
-                Margin="0,16,0,0" />
+        <StackPanel Grid.Row="1" Margin="0,16,0,0">
+            <TextBlock Style="{StaticResource CaptionText}"
+                       Text="{Binding CloseReceiptStatus}"
+                       Visibility="{Binding CloseReceiptStatus, Converter={StaticResource StringToVisibility}}"
+                       Margin="0,0,0,8"
+                       AutomationProperties.LiveSetting="Polite" />
+            <DockPanel LastChildFill="False">
+                <!--
+                    Close receipt clears the terminal's screen; Close only dismisses
+                    this dialog. Same split as the Android ECR simulator.
+                -->
+                <Button DockPanel.Dock="Left"
+                        Style="{StaticResource OutlinedButton}"
+                        Content="Close _receipt"
+                        Command="{Binding CloseReceiptCommand}"
+                        Visibility="{Binding ShowCloseReceipt, Converter={StaticResource BoolToVisibility}}"
+                        MinHeight="40"
+                        MinWidth="120"
+                        Margin="0,0,12,0"
+                        AutomationProperties.Name="Close receipt on terminal" />
+                <Button x:Name="CloseButton"
+                        DockPanel.Dock="Right"
+                        Style="{StaticResource PrimaryButton}"
+                        Content="_Close"
+                        Command="{Binding CloseCommand}"
+                        IsDefault="True"
+                        HorizontalAlignment="Right"
+                        MinHeight="40"
+                        MinWidth="96" />
+            </DockPanel>
+        </StackPanel>
     </Grid>
 </Window>

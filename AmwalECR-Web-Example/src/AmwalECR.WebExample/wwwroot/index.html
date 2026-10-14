@@ -118,6 +118,9 @@
       <div id="busy" class="busy" hidden>
         <progress aria-label="Transaction in progress"></progress>
         <p id="busy-status" class="body" tabindex="-1" role="status"></p>
+        <!-- Counted down from the configured response timeout (130 s on Web Service). -->
+        <p id="busy-countdown" class="countdown" aria-live="off" hidden></p>
+        <p id="busy-countdown-caption" class="caption" hidden></p>
         <button id="btn-cancel" type="button" class="outlined">Cancel</button>
         <p id="busy-note" class="caption" hidden>Cancel only stops waiting here. If the request has already reached the terminal, the transaction may still complete on it.</p>
       </div>
@@ -147,7 +150,7 @@
 
       <p class="caption">Keys are stored encrypted with ASP.NET Core Data Protection. Unlike the Windows sample there is no Show button: the server never sends a stored key back to the browser, so a key can be replaced or cleared but not read.</p>
 
-      <div class="row spread" style="margin-top:1.5rem">
+      <div class="row spread terminals-heading">
         <h2 id="h-terminals" tabindex="-1">Registered terminals</h2>
         <button id="btn-add-terminal" type="button" class="primary compact">Add terminal</button>
       </div>
@@ -219,7 +222,9 @@
       </details>
       <p id="r-copy-status" class="caption" role="status"></p>
     </div>
+    <p id="r-close-receipt-status" class="caption" role="status" hidden></p>
     <div class="modal-actions">
+      <button id="r-close-receipt" type="button" class="outlined" hidden>Close receipt</button>
       <button id="r-close" type="button" class="primary" autofocus>Close</button>
     </div>
   </dialog>

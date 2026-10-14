@@ -1,406 +1,224 @@
-# Amwal ECR — Windows sample app
+# Amwal ECR - Windows (WPF) sample
 
-> Targets **`AmwalPay.Ecr` 1.0.0**. Same inquiry behaviour as the Android ECR-simulator:
-> lookup by receipt number (STAN + date) or by merchant reference on both Wi‑Fi and Web Service.
+A working till for Windows built on the C# `AmwalPay.Ecr` SDK: register terminals, key an
+amount, pick a terminal, run a sale, void, refund or inquiry, read the result. It is meant to be
+read as much as run.
 
-A working Electronic Cash Register for Windows: register the terminals you own,
-key an amount, pick a terminal, run a transaction against it. It is the Windows
-counterpart of the Android **ECR simulator**, built on the C# `AmwalPay.Ecr` SDK,
-with the same screens, form rules and wording.
+- How it is built (layering, state machine, payment-safety rules, extension recipes):
+  [docs/implementation.md](docs/implementation.md)
+- Copy-paste SDK code for Wi-Fi and Web Service: [docs/operation-examples.md](docs/operation-examples.md)
+- The ASP.NET Core front end on the same Core library: [../AmwalECR-Web-Example](../AmwalECR-Web-Example/README.md)
 
-It is meant to be read as much as run — it is the reference for how the SDK is
-used from a WPF till. (`Core/` below is `src/AmwalECR.Example.Core/`; `Views/`,
-`ViewModels/` and `Ui/` are under `src/AmwalECR.Example/`.)
+## Run it
 
-- **How it is built** (layering, state machine, threading, extension recipes):
-  [docs/implementation.md](docs/implementation.md).
-- **Full code examples** (Wi‑Fi and Web Service setup + sale / void / refund / inquiry / receipt):
-  [docs/operation-examples.md](docs/operation-examples.md).
-- **The whole repository** (this sample, the ASP.NET Core web sample that reuses Core, prerequisites,
-  every check): the [umbrella README](../README.md).
-
-| | |
-|---|---|
-| `Views/TransactionView.xaml` | The form, driven by `EcrTransactionType` |
-| `ViewModels/TransactionViewModel.cs` | Holds the in-flight transaction, its `CancellationTokenSource`, and what the screen shows |
-| `Core/Services/TransactionEngine.cs` | Calls `EcrSessions`: plan, open, probe, run, classify the answer |
-| `Core/Services/SelectedTerminalConfig.cs` | Maps registered terminals to `EcrLink` + `EcrSessionPlan` |
-| `Core/Transaction/TransactionFormState.cs` | Which fields exist, what is required, `Validated()` |
-| `Core/Transaction/TransactionOutcomes.cs` | Turns `EcrResult` / `EcrInquiry` into screen state — the payment-safety rules |
-| `Views/TerminalConfigCard.xaml` | Shows active transport, connection and config issues before you pay |
-| `Views/Terminals*`, `Views/TerminalEditWindow.xaml` | Registering terminals: list, add, edit, delete |
-| `Core/Data/EcrExampleSettings.cs` | LAN and Web Service signing keys, environment (encrypted with DPAPI) |
-| `Core/Data/TerminalRepository.cs` | JSON store keyed by terminal serial number |
-| `Ui/Behaviors/AmountInput.cs` | POS-style amount entry on a plain `TextBox` |
-
-`AmwalECR.Example.Core` is a plain `net8.0` library holding everything that is not a
-window, so its logic (amount entry, form rules, config resolution, the transaction
-flow) is unit-tested by `dotnet test` on any OS. `AmwalECR.Example` is the WPF shell.
-
-**Terminals are keyed by serial number**, and the transaction screen keeps only that
-serial — the address is looked up when it sends. Selecting a terminal in the dropdown
-loads its mode (LAN vs Web Service), validates credentials via `EcrSessions.Plan()`,
-and shows any missing configuration before you pay.
-
-Supported operations are **sale, void, refund and inquiry**, with the e-receipt of any
-inquiry result over Wi‑Fi. Wi‑Fi (LAN) and Web Service use **different signing keys** —
-configure both on the Terminals screen.
-
-## Modes
-
-| Mode | In this sample |
-|---|---|
-| Wi‑Fi (LAN) | Supported |
-| Web Service | Supported |
-| USB cable | Registrable, **not supported**: the Windows SDK ships no USB channel |
-| Bluetooth | Registrable, **not supported** (as in the Android sample) |
-
-USB cable and Bluetooth terminals can be added so a terminal list matches the Android
-one, but their config card reads "*X* is not supported in this sample" and Start stays
-disabled.
-
-## Setup structure (same as Android ECR-simulator)
-
-Amwal issues **two different** signing secrets. They live in **global settings** on the
-Terminals screen (not on the Add/Edit terminal form):
-
-| Settings card | Used for |
-|---|---|
-| Wi‑Fi / LAN secure hash key | Wi‑Fi, USB cable, Bluetooth modes |
-| Web Service settings (SIT/UAT/PROD + Web Service key) | Web Service mode only |
-
-| Add/Edit terminal | Fields |
-|---|---|
-| Wi‑Fi | name, serial, IP, port — **no key** |
-| Web Service | name, serial, merchant ID, terminal ID — **no key** |
-
-Operations pick `settings.SecureHashKeyFor(selected.Mode)` once. The transaction config
-card shows **one** key status for the selected mode.
-
-## Web Service initialization
-
-Use this when TMS set `ecrMode: 4`. The till talks to the Amwal Hub over HTTPS — not to the
-terminal's Wi‑Fi IP. There is no fake Hub; you need real credentials from Amwal.
-
-### What to collect
-
-| Item | Notes |
-|---|---|
-| Terminal serial | As registered in TMS |
-| Merchant ID + terminal ID | Numeric strings |
-| Environment | `SIT`, `UAT`, or `PROD` (SDK picks the Hub base URL) |
-| **Web Service** secure hash key | Even-length hex, ≥ 16 characters — **not** the Wi‑Fi/LAN key |
-
-### In the app
-
-1. **Terminals** screen → **Web Service settings** card → set **Environment** and paste the
-   *Web Service secure hash key* (the Wi‑Fi/LAN card above it is a different secret — leave
-   it alone for Hub work). Keys are trimmed, checked with `EcrConfig.IsValidSecureHashKey`,
-   and saved encrypted.
-2. **Add terminal** → mode **Web Service**, name, serial, merchant ID, terminal ID.
-   No key field on this form.
-3. **Transaction** → select that terminal. The config card must be ready before **Start**
-   enables:
-   - Transport: `HTTPS Web Service (JSON HMAC)`
-   - Connection: e.g. `UAT · merchant 13593 · terminal 101311`
-   - Key: `Web Service secure hash key` / `configured (… hex chars)`
-4. If the card lists issues, fix them first — common ones:
-   - `Merchant ID is required for Web Service` / `Terminal ID is required…`
-   - `Merchant ID must be numeric` / `Terminal ID must be numeric`
-   - `Web Service secure hash key is not configured`
-   - `Secure hash key must be an even-length hex string of at least 16 characters`
-5. Run a sale (optionally with a merchant reference). The Hub is contacted only on
-   **Start** — `SelectedTerminalConfig.Resolve` → `EcrSessions.Plan` → `EcrSessions.Open` →
-   `SaleAsync`. There is no reachability probe on Web Service.
-
-On a lost answer the result is **Outcome unknown** (often a `Declined` with
-`NextStep.InquireByMerchantReference` / `NO_RESPONSE`); use **Inquire by reference**, never
-retry the sale. Full C# for setup and each operation:
-[docs/operation-examples.md](docs/operation-examples.md). SDK checklist:
-[AmwalPay.Ecr integration guide §4](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
-
-## Running it
-
-Requires **Windows 10 1809+ or Windows 11** and the **.NET 8 SDK**, plus the SDK source checked
-out beside this repository (see *Choosing how the app gets the SDK* below). From this folder:
+Needs Windows 10 1809+ or Windows 11 and the .NET 8 SDK. From this folder:
 
 ```powershell
-dotnet run --project src/AmwalECR.Example
+dotnet run --project src/AmwalECR.Example -p:EcrSdkDependency=project
 ```
 
-or open `AmwalECR-Example.sln` in Visual Studio 2022 (17.8+) and press F5.
+or open `AmwalECR-Example.sln` in Visual Studio 2022 (17.8+) with
+`EcrSdkDependency=project` set (see below) and press F5.
 
-To run without installing anything, publish a self-contained executable — see
-[Publishing](#publishing). To see it from a Mac, use the Windows VM route in
-[tools/vm/README.md](tools/vm/README.md).
+### Choosing how the build gets the SDK
 
-The PC and the terminal must be on the same network, and the network profile should be
-**Private** (Windows applies its strictest rules to Public networks). The terminal shows
-its address on its idle screen, beneath the card scheme logos. To check a route:
+`Directory.Build.props` selects the SDK through `EcrSdkDependency`:
 
-```powershell
-Test-NetConnection 192.168.1.50 -Port 9100
-```
+| Value | Resolves |
+|---|---|
+| `nuget` (default) | `AmwalPay.Ecr` `$(EcrSdkVersion)` (default `1.0.1`) from nuget.org |
+| `project` | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj`, a sibling checkout of the SDK; override with `-p:EcrSdkProjectPath=<path to AmwalPay.Ecr.csproj>` |
 
-Data lives in `%APPDATA%\AmwalECR-Example\`: `terminals.json` (the terminal list) and
-`settings.dat` (environment and both signing keys, encrypted with Windows DPAPI for the
-current user — the equivalent of Android's `EncryptedSharedPreferences`). Keys are
-trimmed, checked with `EcrConfig.IsValidSecureHashKey`, and saved as you type; settings
-saved by another Windows user cannot be read back, and the app says so rather than
-failing silently.
-
-### Choosing how the app gets the SDK
-
-The counterpart of `ecrSdkDependency` in the Android sample's `gradle.properties`. In
-[`Directory.Build.props`](Directory.Build.props) (or on the command line) set
-`EcrSdkDependency`:
-
-| Value | Resolves from |
-| --- | --- |
-| `nuget` (default) | [`AmwalPay.Ecr`](https://www.nuget.org/packages/AmwalPay.Ecr) version `$(EcrSdkVersion)` (default `1.0.0`) from nuget.org |
-| `project` | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj` — sibling SDK checkout |
+**Use `project` for now.** The samples call `CloseReceiptAsync`, which exists only in SDK 1.0.2.
+nuget.org has 1.0.0 and 1.0.1, so a default (`nuget`) build fails until 1.0.2 is published.
 
 ```powershell
-# default — live package from nuget.org
-dotnet build AmwalECR-Example.NuGet.slnf
-
-# or pin explicitly
-dotnet build AmwalECR-Example.NuGet.slnf -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
-
-# SDK source next to this repo
-git clone https://github.com/amwal-pay/AmwalpayEcrWindows AmwalECR-Windows
+git clone https://github.com/amwal-pay/AmwalpayEcrWindows ..\..\AmwalECR-Windows   # next to the repo folder
 dotnet build AmwalECR-Example.sln -p:EcrSdkDependency=project
 ```
 
-**Prefer `AmwalECR-Example.NuGet.slnf` for NuGet builds.** The full `.sln` still lists the SDK
-project for IDE browsing in `project` mode; without that checkout, open the `.slnf` instead.
+Once 1.0.2 is on nuget.org, `dotnet build AmwalECR-Example.NuGet.slnf` builds without a checkout
+(the `.slnf` leaves the SDK project out; the full `.sln` lists it). Only `AmwalECR.Example.Core`
+references the SDK; the app, the tests and the web sample receive it through Core. After
+switching modes, restore again (Core's `obj` is shared). Any value other than `project` or
+`nuget`, or a `project` checkout that is missing, fails the build with an explicit message.
 
-Only `AmwalECR.Example.Core` references the SDK; the app and the tests receive it
-transitively (and so does the web sample). Any value other than `project` or `nuget` fails the
-build with a message saying what is allowed, and so does a `project` checkout that is not where
-expected; point `-p:EcrSdkProjectPath=<path to AmwalPay.Ecr.csproj>` at another location.
-After switching mode, restore again (Core, the app, the tests and the web sample share Core's `obj`).
+### Building off Windows
 
-### Debug output
+The tests and Core need only the .NET 8 SDK, on any OS. The WPF project also compiles on
+macOS/Linux (`EnableWindowsTargeting` is on) but only with an SDK that ships the Windows Desktop
+targets, such as the .NET 10 SDK; Homebrew's .NET 8 SDK fails with `MSB4019`. It cannot run
+there. To see it from a Mac use the Windows VM route in [tools/vm/README.md](tools/vm/README.md).
 
-The SDK writes its diagnostics — every request and response, the signing details, probe
-failures — to an `IEcrLogger`. The sample routes it to a collapsible **Debug output**
-panel at the bottom of the window (last 500 lines, with **Copy log** and **Clear**) and
-to `Debug.WriteLine`. It is the Windows equivalent of Logcat and how a tester sees the
-wire traffic. The lines include the masked card number: treat what you copy as
+## Configure it
+
+Amwal issues **two different signing secrets**, set once on the **Terminals** screen (not on the
+terminal form):
+
+| Settings card | Used for |
+|---|---|
+| Wi-Fi/LAN secure hash key | Wi-Fi terminals |
+| Web Service: environment (`SIT` / `UAT` / `PROD`) + Web Service secure hash key | Web Service terminals |
+
+| Add/Edit terminal | Fields (no key) |
+|---|---|
+| Wi-Fi | name, serial, IP, port (blank = 9100) |
+| Web Service | name, serial, merchant ID, terminal ID (numeric) |
+
+A key must be an even-length hex string of at least 16 characters; it is trimmed, checked with
+`EcrConfig.IsValidSecureHashKey`, saved as you type and encrypted with Windows DPAPI.
+
+On the Transaction screen the **config card** shows the transport, connection and key status of
+the selected terminal and lists anything the SDK plan says is missing; **Start** stays disabled
+until the plan is ready.
+
+Data lives in `%APPDATA%\AmwalECR-Example\`: `terminals.json` and `settings.dat` (environment and
+both keys, encrypted for the current Windows user; settings saved by another user cannot be read
+back and the app says so).
+
+### Wi-Fi
+
+The PC and terminal must be on the same network (profile **Private**). The terminal shows its IP
+beneath the card logos on its idle screen. Check the route with
+`Test-NetConnection 192.168.1.50 -Port 9100`.
+
+### Web Service
+
+The till calls the Amwal Hub over HTTPS (`ecrMode: 4`), not the terminal's IP. There is no fake
+Hub; you need credentials from Amwal. In the app:
+
+1. **Terminals** -> Web Service card: pick the environment and paste the **Web Service** key
+   (not the Wi-Fi key).
+2. **Add terminal** -> mode Web Service: serial, merchant ID, terminal ID.
+3. **Transaction** -> select it. The config card must read `HTTPS Web Service (JSON HMAC)` and
+   *configured*. Blockers it names include a missing or non-numeric ID and
+   `Web Service secure hash key is not configured`.
+4. Start a sale. The Hub is contacted only then; there is no reachability probe.
+
+Hub hosts come from the SDK's environment setting. SDK checklist:
+[integration guide, initialization](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
+
+## What it demonstrates
+
+**Operations.** Sale, void, refund and inquiry. The form follows the SDK's
+`EcrTransactionType` flags, so what is shown and what is required cannot disagree:
+
+| | Amount | Receipt number | Date | Merchant reference |
+|---|---|---|---|---|
+| Sale | yes | | | optional |
+| Void | dimmed (the terminal knows it) | yes | | |
+| Refund | yes | yes | yes | |
+| Inquiry | dimmed | yes | yes | or look up by reference |
+
+Void, refund and inquiry also offer **Different terminal** (original taken elsewhere; its ID is
+then required; ignored on Web Service). Date defaults to today, cannot be in the future and goes
+on the wire as `yyyyMMdd`. A sale's merchant reference is optional, at most 32 printable ASCII
+characters with no space, `&` or `=`; blank means the app generates one. Receipt number is up to
+6 digits.
+
+**Amount entry** behaves like the terminal's: no decimal point is typed, digits shift in from
+the right against three fixed decimals (`1` -> `0.001`, `1 2 3 4` -> `1.234`), backspace removes
+one, Escape clears, the caret is pinned to the end. Bounds are `0.010` to `100000.000`
+(`AmountLimits.cs`; on a real terminal the maximum comes from the server, so change it for your
+deployment).
+
+**Operation countdown and Cancel.** While waiting, the screen counts down the configured response
+timeout (120 s Wi-Fi, 130 s Web Service). **Cancel** only stops waiting: a cancelled sale, void
+or refund may still have reached the terminal, so it is reported as an unknown outcome with a
+look-up, never as "cancelled". Cancelling an inquiry, or anything before the request is sent,
+just returns to idle. Closing the window mid-transaction asks first and cancels nothing.
+
+**Unknown outcomes.** These show as **Outcome unknown** (or **Not completed** when nothing was
+sent), and the only follow-up offered is **Inquire by reference**, never a retry:
+
+- `EcrResult.Failed` for a timeout or lost connection;
+- `Declined` with `NO_RESPONSE` or `NextStep.InquireByMerchantReference` (the SDK reports these
+  as `Failed`; the sample still handles them defensively);
+- a stopped wait (Cancel).
+
+If the SDK's automatic inquiry (`AutoInquireOnFailure`, Wi-Fi) finds the transaction, the result
+shows it with a note that the answer was lost but the terminal knows it. An unreachable terminal
+(the Wi-Fi probe runs first) means nothing was sent: the message says what to check and offers no
+look-up.
+
+**Inquiry.** By receipt number and date, or by reference (the form label is **Original merchant
+reference**; the date and receipt fields are hidden and the inquiry's own `merchantReference` is
+left blank so the SDK mints one). The headline is the *transaction's* status: finding a declined
+sale is a successful inquiry. A failed inquiry is a failure ("Not completed", or "Outcome
+unknown" with the reference kept for another try), never "Not found". Inquiry reads only, so the
+terminal answers it even mid-payment.
+
+**Close receipt.** A separate button on a completed sale, void or refund result asks the terminal
+to put its receipt away (Wi-Fi `CLOSE_RECEIPT`; Web Service `/Ecr/closeReceipt`, using the
+sale/void/refund merchant reference as `originalMerchantReference`). Dismissing the dialog does
+not send it.
+
+**E-receipt QR.** After an inquiry over Wi-Fi the dialog can fetch the transaction's e-receipt
+and draw it as a QR code on the PC. Web Service has no receipt operation and the dialog says so.
+
+**Debug output.** A collapsible panel (last 500 lines, Copy, Clear) shows what the SDK logs:
+every request and answer, with masked card numbers, never a key. Treat copied logs as
 transaction records.
 
-## Amount entry
+## Not supported
 
-The amount field behaves like the terminal's own: no decimal point is typed, digits
-shift in from the right against three fixed decimals, and it reads `0.000` when empty.
-
-| Keys pressed    | Shows | Sent as        |
-| --------------- | ----- | -------------- |
-| `1`             | 0.001 | `000000000001` |
-| `1` `2`         | 0.012 | `000000000012` |
-| `1` `2` `3` `4` | 1.234 | `000000001234` |
-| backspace       | 0.123 | `000000000123` |
-
-The caret cannot be placed: the box is rendered from its keyed digits with the selection
-pinned to the end, so clicking the middle of the number does not make the next digit land
-there. Pasted text is keyed in as digits; moving focus into the field from another control
-starts a fresh amount; Escape clears it; Delete, Space and Cut do nothing. At most nine digits
-are accepted, and the form then rejects anything over the maximum.
-
-Amount bounds live in `AmwalECR.Example.Core/Ui/AmountLimits.cs` and mirror the terminal's
-purchase form: required, a minimum of `0.010`, then the terminal's transaction limit
-(`100000.000`). On a real terminal that limit comes from the server, so change `Max` to
-match your deployment.
-
-## What the form asks for
-
-Which fields appear is decided by `EcrTransactionType`, so the form and the wire format
-cannot disagree about what an operation needs.
-
-|             | Amount | Receipt number | Date | Merchant reference |
-| ----------- | ------ | -------------- | ---- | ------------------ |
-| **Sale**    | ✔      |                |      | optional           |
-| **Void**    |        | ✔              |      |                    |
-| **Refund**  | ✔      | ✔              | ✔    |                    |
-| **Inquiry** |        | ✔              | ✔    | (or look up by reference instead) |
-
-A void takes the original transaction's amount, which only the terminal knows, so the
-amount field is dimmed rather than hidden — the operator can see it is not theirs to set.
-An inquiry dims it too, and says why: nothing is charged.
-
-- **Different terminal** (void, refund, inquiry): the original may have been taken on
-  another terminal; its ID is then required.
-- **Date** defaults to today, cannot be in the future, and goes on the wire as `yyyyMMdd`.
-- **Merchant reference** (sale, optional): at most 32 characters, printable ASCII, no
-  space, `&` or `=` — the SDK's own rule, checked before anything is sent. Blank means the
-  app generates one.
-- **Receipt number** is digits only, up to 6.
-
-## Inquiry
-
-Looks an earlier transaction up by its receipt number and the day it was taken — or, with
-**Look up by reference**, by the reference the till sent it with — and shows what became
-of it: **receipt number, type, card, amount, status and date/time**, plus whether the
-backend says it can still be voided or refunded. Everything else the terminal sent is under
-"Show raw response".
-
-By-reference lookup hides the date and receipt fields (a reference is not day-scoped). The
-typed date is sent only for STAN lookups — the sample does **not** invent today's date for
-Web Service by-reference inquiries (same as the Android simulator). On Web Service the SDK
-posts to `/Ecr/Inquiry` with empty `stan` and `originalMerchantReference` set.
-
-It reads and nothing more, so the terminal answers it **even mid-payment**. That is the
-point: after a transaction whose outcome is unknown, this is how the till finds out,
-instead of retrying and charging the customer twice.
-
-The dialog's headline is the _transaction's_ status, not the lookup's: finding a declined
-sale is a successful inquiry.
-
-**QR receipt.** Over Wi‑Fi the result carries a button that fetches the transaction's
-e-receipt and draws it as a QR code (QRCoder, rendered on the PC, so it appears at once and
-survives the network dropping). The customer scans it and reads the receipt on their own
-phone — nothing is printed. Receipt is not a transaction type in the dropdown: it follows a
-transaction the operator already has on screen. The Web Service transport has no receipt
-operation, so its results say so instead of offering the button.
-
-## When the answer never comes
-
-A timeout, a dropped connection, an answer that cannot be verified: the request may have
-reached the terminal, and the sale may have gone through. The sample follows the SDK's
-rules to the letter:
-
-- The screen says **Outcome unknown**, never "Declined" or "Cancelled", and offers exactly
-  one action — **Inquire by reference** — never a retry. Sending the sale again is how a
-  customer gets charged twice.
-- If the SDK's automatic inquiry (`AutoInquireOnFailure`, on by default) finds the
-  transaction, the dialog shows it as an inquiry result: *the answer was lost, but the
-  terminal knows this transaction — do not send it again.*
-- **Cancel** (shown while waiting) only stops waiting here. If the request already reached
-  the terminal it can still complete, so a cancelled sale is reported as an unknown
-  outcome with the same look-up, not as "cancelled". The app generates the sale's
-  reference itself for exactly this reason: the SDK returns one on a result, and a
-  cancelled call returns none.
-- On **Web Service** a network error on a money-moving call does not arrive as `Failed`; it
-  arrives as `Declined` with `ResponseCode == "NO_RESPONSE"` (or another status) and
-  `NextStep == InquireByMerchantReference`. The sample treats that as an unknown outcome
-  and offers **Inquire by reference** — which Web Service supports in SDK 1.0.0.
-- Closing the window mid-transaction asks first; it does not cancel anything on the
-  terminal.
-- Nothing was sent when the terminal cannot be reached (the Wi‑Fi probe runs first), so
-  that message says what to check and offers no look-up.
+USB cable and Bluetooth terminals can be registered, but the config card says "*X* is not supported in this sample" and Start stays disabled. The
+Windows SDK has no USB channel or Bluetooth link, and app-to-app is not offered. The e-receipt QR
+is Wi-Fi only.
 
 ## Testing without a terminal
 
-The SDK repository's own `tools/fake_pos_server.py` (`AmwalECR-Windows/tools/`) **cannot be used
-with this SDK as it is**:
-`EcrSessions.Plan` reports "Wi-Fi/LAN secure hash key is not configured" until a key is
-set, and a till that holds a key discards any answer that is not signed or does not echo
-the request's nonce — the script answers unsigned, in the older flat shape. (Checked: with a
-key configured, its answers surface as *"The answer was not signed with this terminal's
-key"*.) So this repo carries a signed copy,
-[`tools/fake_pos_server_signed.py`](tools/fake_pos_server_signed.py): it verifies the
-request signature and nonce, answers in the unified envelope, echoes the nonce and signs
-the answer (HMAC-SHA256 over the sorted scalar `key=value&…` pairs, hex-decoded key, upper
-case hex — `AmwalPay.Ecr/Internal/SecureHash.cs`). It was checked against this SDK.
+The SDK repository's own `fake_pos_server.py` answers unsigned and cannot be used with this SDK.
+[`tools/fake_pos_server_signed.py`](tools/fake_pos_server_signed.py) verifies the request
+signature, echoes the nonce and signs its answers. It needs only Python 3:
 
 ```powershell
-python tools/fake_pos_server_signed.py --port 19100 --key 0123456789ABCDEF0123456789ABCDEF
+python tools/fake_pos_server_signed.py --key 0123456789ABCDEF0123456789ABCDEF --port 19100
 ```
 
-(Run from this folder. It needs only Python 3.)
+**Use a port outside 9100-9199.** Dart/Flutter tooling listens in that range on developer
+machines and can answer instead of your fake. `19100` is safe; real terminals stay on 9100.
 
-> **Use a port outside 9100–9199.** 9100 is the terminals' standard port, but on a developer
-> machine other tooling — the Dart/Flutter tools, for one — may already listen in that range and
-> answer instead of your fake, or make the fake fail to bind. `19100` is safe. Real terminals
-> stay on 9100; the port field in the app is optional and blank means 9100.
-
-1. Start the server with any hex key of at least 16 characters (even length).
-2. In the app open **Terminals** and paste **the same key** as the *Wi-Fi/LAN secure hash
-   key*.
-3. **Add terminal**: any name and serial number, mode Wi‑Fi, IP `127.0.0.1` (this PC) or the
-   LAN address the server prints, port `19100` (the port you started it on).
-4. Back on the main screen key an amount and press **Start transaction**.
-
-Flags, for the outcomes worth seeing:
+1. In the app, **Terminals**: paste the same key as the Wi-Fi/LAN key.
+2. **Add terminal**: any name and serial, mode Wi-Fi, IP `127.0.0.1`, port `19100`.
+3. Transaction: key an amount, **Start transaction**.
 
 | Flag | Answers with |
 |---|---|
-| *(none)* | Approved sales, voids, refunds; inquiries find what the server has taken (or a fixed sample by receipt number); receipts return a sample URL |
+| *(none)* | Approved sales, voids and refunds; inquiries find recorded transactions (or a fixed sample); receipts return a sample URL |
 | `--decline 51` | A decline with that code |
-| `--partial` | A partial approval — half of every sale |
-| `--delay 3` | Waits first, to mimic card entry (try **Cancel** here) |
+| `--partial` | A partial approval (half of every sale) |
+| `--delay 3` | Waits first, to mimic card entry (try **Cancel**) |
 | `--not-found` | Every inquiry answers 25 *not found*; receipts refuse |
-| `--drop-sale` | Records the sale, then hangs up without answering. The SDK's automatic inquiry finds it: the dialog shows the transaction with the *answer was lost* note |
-| `--drop-sale --drop-first-inquiry` | As above, and the automatic inquiry is dropped too: **Outcome unknown**, then **Inquire by reference** finds it |
-| a different key in the app | *"The answer was not signed with this terminal's key"* — an unknown outcome |
+| `--drop-sale` | Records the sale, then hangs up. The SDK's automatic inquiry finds it: the dialog shows the transaction with the *answer was lost* note |
+| `--drop-sale --drop-first-inquiry` | As above and the automatic inquiry is dropped too: **Outcome unknown**, then **Inquire by reference** finds it |
+| `--host 127.0.0.1` | Listen on loopback only (default `0.0.0.0`) |
+| a different key in the app | *"The answer was not signed with this terminal's key"*, an unknown outcome |
 
-Web Service needs the real backend — see [Web Service initialization](#web-service-initialization);
-there is no fake Hub for it.
+The fake has no `CLOSE_RECEIPT` handler; check that action against a real terminal.
 
-## Building and testing
-
-From this folder (`Windows-Native-Example/`):
+## Build, test, publish
 
 ```bash
-dotnet test tests/AmwalECR.Example.Tests                 # any OS, .NET 8 SDK: Core and the flow against a loopback terminal
-/usr/local/share/dotnet/dotnet build AmwalECR-Example.sln   # WPF compile check off Windows; needs a Windows Desktop SDK (.NET 10)
-python3 tools/check-xaml-bindings.py                     # the XAML binding guard, any OS
+dotnet test tests/AmwalECR.Example.Tests -p:EcrSdkDependency=project   # 189 tests, any OS
+dotnet build AmwalECR-Example.sln -p:EcrSdkDependency=project          # WPF compile check (Windows Desktop SDK)
+python3 tools/check-xaml-bindings.py                                   # XAML binding guard, any OS
 ```
 
-Prerequisites, verified:
+The tests cover amount entry, form validation, config resolution, storage, every outcome
+classification, result wording and the whole flow against an in-process signed terminal. The
+XAML guard catches the one crash a build cannot: a two-way binding onto a read-only property.
+See [implementation.md, tests](docs/implementation.md#l-tests).
 
-- The tests and Core need only the **.NET 8 SDK**, on any OS. Microsoft ends support for .NET 8
-  on **Nov 10, 2026**; the samples should move to `net10.0` (a note; not yet done). The SDK
-  supports .NET Framework 4.6.2+ and .NET 8+ (see its
-  [compatibility notes](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/compatibility.md#support-calendar)).
-- The WPF project *compiles* off Windows because `EnableWindowsTargeting` is set in
-  [`Directory.Build.props`](Directory.Build.props), but only with an SDK that ships the Windows
-  Desktop targets: the Microsoft builds of the **.NET 10 SDK** do, **Homebrew's .NET 8 SDK does
-  not** (`MSB4019: Microsoft.NET.Sdk.WindowsDesktop.targets was not found`). It cannot *run* off
-  Windows.
-- Running it needs Windows 10 1809+ or Windows 11.
+Publishing a self-contained executable: see the [root README](../README.md#windows-executables-for-testers).
+For a non-developer run note, see [tools/START-HERE.txt](tools/START-HERE.txt).
 
-The tests (186) cover the amount rules, form validation, config resolution, terminal and
-settings storage, the classification of every outcome, the result dialog's content, and the
-transaction flow end to end against an in-process signed terminal on loopback (approval,
-decline, unreachable, lost answer, recovered answer, wrong key, cancel before and during
-the wait, inquiry, receipt). The XAML is checked by building it and by
-`tools/check-xaml-bindings.py`, which catches the one crash a build cannot: a two-way binding
-onto a read-only property. Neither the view-models nor the running window have automated tests;
-see the [known limitations](docs/implementation.md#o-known-limitations) and
-[what each check catches](docs/implementation.md#l-tests).
+## Known limits
 
-## Publishing
+- The window and view-models are not covered by automated tests; focus, IME, HiDPI and DPAPI on
+  a real profile are checked by hand.
+- No fake Hub and no loopback test for Web Service; only its result classification is tested.
+- The amount maximum is a constant; no single-instance guard (two copies overwrite each other's
+  terminal list); not localised (currency is OMR).
 
-A self-contained single-file executable, so the target PC needs no .NET (works from macOS too
-with the .NET 10 SDK):
-
-```bash
-dotnet publish src/AmwalECR.Example/AmwalECR.Example.csproj -c Release -r win-x64 \
-  --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:EnableCompressionInSingleFile=true -p:DebugType=none -o dist/win-x64
-```
-
-Repeat with `-r win-arm64`. Prefer zipping under the repo `dist/` folder with
-`tools/fake_pos_server_signed.py` and `START-HERE.txt` (see the
-[umbrella README](../README.md#what-to-share-for-testing)). The CI workflow
-([`../codemagic.yaml`](../codemagic.yaml)) publishes both on an `app-*` tag. The builds are
-**unsigned**: Windows SmartScreen warns on first run (*More info*, then *Run anyway*).
-
-## Differences from the Android sample
-
-- **USB cable** is not driven (no USB channel in the Windows SDK); see *Modes*.
-- **Different terminal** switch is live. It is commented out of the Android screen, but
-  the form state and SDK support it.
-- The **signing keys** live in a DPAPI-encrypted file rather than `EncryptedSharedPreferences`.
-- **Inquiry** (STAN and by-reference, including Web Service) matches the Android simulator;
-  by-reference sends a blank date.
-- **Look-up by reference** after a money-moving failure is offered only when the request
-  may have gone out (`Failure.OutcomeUnknown`); a failed *inquiry* by reference keeps the
-  reference so the operator can try again (same idea as Android).
-- A decline whose `NextStep` asks for an inquiry, and Web Service `NO_RESPONSE`, are
-  treated as unknown outcomes.
-- A **Cancel** button, the **Debug output** panel, the *Different terminal* switch and an
-  optional-port rule (blank means 9100) are additions; the config card refreshes when keys
-  change on the Terminals screen.
+More in [implementation.md](docs/implementation.md#n-known-limitations).

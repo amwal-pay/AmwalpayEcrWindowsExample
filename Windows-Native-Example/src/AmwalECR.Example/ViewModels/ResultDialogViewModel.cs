@@ -45,6 +45,13 @@ public sealed partial class ResultDialogViewModel : ObservableObject
     [ObservableProperty]
     private string _copyStatus = "";
 
+    [ObservableProperty]
+    private string _closeReceiptStatus = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowCloseReceipt))]
+    private bool _closeReceiptBusy;
+
     public string Headline => Model.Headline;
 
     public string Amount => Model.Amount;
@@ -109,11 +116,31 @@ public sealed partial class ResultDialogViewModel : ObservableObject
 
     public bool HasReceiptNote => ReceiptNote.Length != 0;
 
+    /// <summary>
+    /// Offered on a completed sale / void / refund over Wi‑Fi or Web Service.
+    /// The dialog stays open so the cashier can keep reading the result.
+    /// </summary>
+    public bool ShowCloseReceipt =>
+        !CloseReceiptBusy
+        && _transaction.State is TransactionState.Completed
+        && _transaction.CanCloseTerminalReceipt();
+
     private ResultDialogModel? Build() =>
         ResultPresenter.For(_transaction.State, _transaction.SelectedConfig?.UsesWebService == true);
 
     private void OnTransactionChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(TransactionViewModel.OperationTimer)
+            or nameof(TransactionViewModel.HasOperationTimer)
+            or nameof(TransactionViewModel.CountdownLabel)
+            or nameof(TransactionViewModel.CountdownCaption))
+        {
+            OnPropertyChanged(nameof(HasOperationTimer));
+            OnPropertyChanged(nameof(CountdownLabel));
+            OnPropertyChanged(nameof(CountdownCaption));
+            return;
+        }
+
         if (e.PropertyName != nameof(TransactionViewModel.State)) return;
 
         var state = _transaction.State;
@@ -132,10 +159,30 @@ public sealed partial class ResultDialogViewModel : ObservableObject
         OnPropertyChanged(nameof(HasReceiptQr));
         OnPropertyChanged(nameof(ReceiptProblem));
         OnPropertyChanged(nameof(HasReceiptProblem));
+        OnPropertyChanged(nameof(HasOperationTimer));
+        OnPropertyChanged(nameof(CountdownLabel));
+        OnPropertyChanged(nameof(CountdownCaption));
     }
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke();
+
+    [RelayCommand]
+    private async Task CloseReceipt()
+    {
+        if (!ShowCloseReceipt) return;
+        CloseReceiptBusy = true;
+        CloseReceiptStatus = "";
+        try
+        {
+            CloseReceiptStatus = await _transaction.CloseTerminalReceiptAsync();
+        }
+        finally
+        {
+            CloseReceiptBusy = false;
+            OnPropertyChanged(nameof(ShowCloseReceipt));
+        }
+    }
 
     /// <summary>The window has closed, however it was closed.</summary>
     public void OnClosed()
@@ -155,6 +202,15 @@ public sealed partial class ResultDialogViewModel : ObservableObject
 
     [RelayCommand]
     private async Task RequestReceipt() => await _transaction.RequestReceiptAsync();
+
+    [RelayCommand]
+    private void CancelReceipt() => _transaction.CancelCommand.Execute(null);
+
+    public bool HasOperationTimer => _transaction.HasOperationTimer;
+
+    public string CountdownLabel => _transaction.CountdownLabel;
+
+    public string CountdownCaption => _transaction.CountdownCaption;
 
     [RelayCommand]
     private void CopyRaw() => CopyStatus = _clipboard.TryCopy(RawPayload)

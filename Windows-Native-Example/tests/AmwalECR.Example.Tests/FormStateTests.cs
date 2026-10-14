@@ -182,7 +182,7 @@ public class TransactionFormStateTests
         (_, request) = (form with { OriginalReference = "  ORDER-77 " }).Validated(Serial);
         Assert.True(request!.LooksUpByReference);
         Assert.Equal("ORDER-77", request.OriginalReference);
-        Assert.Equal("ORDER-77", request.MerchantReference);
+        Assert.Equal("", request.MerchantReference);
         Assert.Equal("", request.ReceiptNumber);
         Assert.Equal("", request.TransactionDate);
     }

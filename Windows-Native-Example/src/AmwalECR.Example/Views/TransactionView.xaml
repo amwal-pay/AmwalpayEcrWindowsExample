@@ -81,7 +81,7 @@
 
                 <StackPanel Margin="0,0,0,16"
                             Visibility="{Binding Form.LooksUpByReference, Converter={StaticResource BoolToVisibility}}">
-                    <Label Content="Merchant refer_ence" Target="{Binding ElementName=OriginalReferenceBox}" Style="{StaticResource FieldLabel}" />
+                    <Label Content="Original merchant refer_ence" Target="{Binding ElementName=OriginalReferenceBox}" Style="{StaticResource FieldLabel}" />
                     <TextBox x:Name="OriginalReferenceBox"
                              Style="{StaticResource FieldTextBox}"
                              MaxLength="32"
@@ -191,8 +191,20 @@
                 <TextBlock Style="{StaticResource BodyText}"
                            Text="{Binding StatusText}"
                            AutomationProperties.LiveSetting="Polite" />
+                <StackPanel Orientation="Horizontal"
+                            Margin="0,8,0,0"
+                            Visibility="{Binding HasOperationTimer, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Style="{StaticResource MonoText}"
+                               FontWeight="SemiBold"
+                               Text="{Binding CountdownLabel}"
+                               AutomationProperties.LiveSetting="Polite" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"
+                               Text="{Binding CountdownCaption}" />
+                </StackPanel>
                 <Button Style="{StaticResource OutlinedButton}"
-                        Content="_Cancel"
+                        Content="_Cancel operation"
                         Command="{Binding CancelCommand}"
                         HorizontalAlignment="Left"
                         Margin="0,12,0,0" />

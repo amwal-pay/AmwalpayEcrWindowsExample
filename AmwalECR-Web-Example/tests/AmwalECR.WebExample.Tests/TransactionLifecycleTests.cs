@@ -40,6 +40,23 @@ public class TransactionLifecycleTests
     }
 
     [Fact]
+    public async Task A_running_transaction_reports_the_configured_timeout_and_what_is_left_of_it()
+    {
+        using var h = new Harness();
+
+        var (status, started) = await h.StartAsync(Harness.Sale());
+
+        Assert.Equal(HttpStatusCode.Accepted, status);
+        // Wi-Fi keeps the LAN default; a Web Service terminal is given 130 s by the SDK.
+        Assert.Equal(120, started!["timeoutSeconds"]!.GetValue<int>());
+        var remaining = started["remainingSeconds"]!.GetValue<int>();
+        Assert.InRange(remaining, 0, 120);
+
+        var end = await h.WaitFinishedAsync(started["id"]!.GetValue<string>());
+        Assert.Null(end["remainingSeconds"]);
+    }
+
+    [Fact]
     public async Task A_blank_reference_is_generated_by_the_app()
     {
         using var h = new Harness();

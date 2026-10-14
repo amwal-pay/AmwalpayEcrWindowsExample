@@ -331,7 +331,7 @@ public class TransactionEngineTests : IDisposable
         using var terminal = new FakeTerminal(_ => FakeTerminal.Found());
         var request = new TransactionRequest
         {
-            Type = EcrTransactionType.Inquiry, TerminalSerial = "TW1", OriginalReference = "ORDER-6", MerchantReference = "ORDER-6",
+            Type = EcrTransactionType.Inquiry, TerminalSerial = "TW1", OriginalReference = "ORDER-6", MerchantReference = "",
         };
 
         await Run(Engine(terminal.Port), request);

@@ -118,9 +118,13 @@ public sealed record TransactionFormState
             ReceiptNumber = LooksUpByReference ? "" : ReceiptNumber,
             OriginalTerminalId = ShowOriginalTerminal ? OriginalTerminalId : "",
             TransactionDate = ShowOriginalDate ? OriginalDateOnWire : "",
+            // By-reference inquiry: originalMerchantReference = what to look up;
+            // merchantReference = this inquiry's own id (blank → SDK generates).
+            // Never copy the original into merchantReference — that made both
+            // wire fields the same and broke Hub correlation.
             OriginalReference = LooksUpByReference ? OriginalReference.Trim() : "",
             MerchantReference = LooksUpByReference
-                ? OriginalReference.Trim()
+                ? ""
                 : ShowMerchantReference ? MerchantReference.Trim() : "",
         };
         return (this with { Errors = new FormErrors() }, request);

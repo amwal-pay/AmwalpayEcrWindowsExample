@@ -36,6 +36,8 @@ export function initTransaction({ meta, onFinished }) {
     busyStatus: $('#busy-status'),
     busyNote: $('#busy-note'),
     cancel: $('#btn-cancel'),
+    countdown: $('#busy-countdown'),
+    countdownCaption: $('#busy-countdown-caption'),
     linkLost: $('#link-lost'),
   };
   const groups = Object.fromEntries([...document.querySelectorAll('#txn-form [data-field]')].map((el) => [el.dataset.field, el]));
@@ -335,6 +337,7 @@ export function initTransaction({ meta, onFinished }) {
     show(els.busy, busy);
     if (busy) {
       setText(els.busyStatus, run.statusText);
+      startCountdown();
       show(els.busyNote, run.state === 'inProgress');
       els.cancel.disabled = false;
       if (!wasBusy) els.busyStatus.focus();
@@ -351,7 +354,39 @@ export function initTransaction({ meta, onFinished }) {
       announce('Stopped. No money was moved.');
     }
 
+    if (!busy) stopCountdown();
+
     els.start.disabled = !canStart();
+  }
+
+  // The server counts the budget down and reports what is left with every poll; the page
+  // only ticks the label between polls, so it needs no clock that agrees with the server.
+  let countdownTimer = null;
+  let countdownDeadline = 0;
+
+  function startCountdown() {
+    if (typeof run?.remainingSeconds !== 'number') {
+      stopCountdown();
+      return;
+    }
+    countdownDeadline = Date.now() + run.remainingSeconds * 1000;
+    setText(els.countdownCaption, `remaining of ${run.timeoutSeconds} s timeout`);
+    show(els.countdown, true);
+    show(els.countdownCaption, true);
+    tickCountdown();
+    if (!countdownTimer) countdownTimer = setInterval(tickCountdown, 1000);
+  }
+
+  function tickCountdown() {
+    const left = Math.max(0, Math.ceil((countdownDeadline - Date.now()) / 1000));
+    setText(els.countdown, `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`);
+  }
+
+  function stopCountdown() {
+    clearInterval(countdownTimer);
+    countdownTimer = null;
+    show(els.countdown, false);
+    show(els.countdownCaption, false);
   }
 
   els.cancel.addEventListener('click', async () => {
@@ -402,6 +437,8 @@ export function initTransaction({ meta, onFinished }) {
     rawSummary: $('#r-raw-summary'),
     rawText: $('#r-raw-text'),
     copyStatus: $('#r-copy-status'),
+    closeReceipt: $('#r-close-receipt'),
+    closeReceiptStatus: $('#r-close-receipt-status'),
   };
   let silentClose = false;
 
@@ -437,9 +474,12 @@ export function initTransaction({ meta, onFinished }) {
       r.raw.open = false;
       r.rawSummary.textContent = 'Show raw response';
       r.copyStatus.textContent = '';
+      setText(r.closeReceiptStatus, '');
     }
 
     renderReceipt(d);
+    show(r.closeReceipt, !!d.canCloseReceipt);
+    r.closeReceipt.disabled = false;
 
     if (!dialog.open) {
       dialog.showModal();
@@ -486,6 +526,22 @@ export function initTransaction({ meta, onFinished }) {
   });
 
   $('#r-close').addEventListener('click', () => closeDialog({ silent: false }));
+
+  r.closeReceipt.addEventListener('click', async () => {
+    if (!run?.dialog?.canCloseReceipt) return;
+    r.closeReceipt.disabled = true;
+    try {
+      const result = await api.closeReceipt(run.id);
+      setText(r.closeReceiptStatus, result?.message ?? 'Terminal is back on its idle screen');
+    } catch (error) {
+      setText(
+        r.closeReceiptStatus,
+        error instanceof ApiError ? error.message : 'Could not close the receipt',
+      );
+    } finally {
+      r.closeReceipt.disabled = false;
+    }
+  });
 
   r.inquire.addEventListener('click', async () => {
     if (!run?.dialog?.isUnknownOutcome) return;

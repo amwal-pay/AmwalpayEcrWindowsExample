@@ -116,7 +116,8 @@ public sealed record DialogView(
     string? UnknownOutcomeWarning,
     bool OffersReceipt,
     string? ReceiptNote,
-    ReceiptView Receipt);
+    ReceiptView Receipt,
+    bool CanCloseReceipt);
 
 public sealed record TransactionView(
     string Id,
@@ -127,7 +128,9 @@ public sealed record TransactionView(
     bool IsResult,
     string StatusText,
     long Version,
-    DialogView? Dialog)
+    DialogView? Dialog,
+    int TimeoutSeconds = 120,
+    int? RemainingSeconds = null)
 {
     public static TransactionView From(TransactionSnapshot run)
     {
@@ -162,7 +165,9 @@ public sealed record TransactionView(
                         EcrReceipt.Unavailable u => u.Reason.Length != 0 ? u.Reason : "No receipt is available for this transaction",
                         EcrReceipt.Failed f => f.Failure.Message,
                         _ => null,
-                    }));
+                    }),
+                // Wi‑Fi and Web Service in this sample — same modes that can close a receipt.
+                CanCloseReceipt: state is TransactionState.Completed);
         }
 
         return new TransactionView(
@@ -183,7 +188,9 @@ public sealed record TransactionView(
             state.IsResult,
             state is TransactionState.Checking ? "Checking the terminal…" : "Waiting for the POS terminal…",
             run.Version,
-            dialog);
+            dialog,
+            run.TimeoutSeconds,
+            run.RemainingSeconds);
     }
 }
 

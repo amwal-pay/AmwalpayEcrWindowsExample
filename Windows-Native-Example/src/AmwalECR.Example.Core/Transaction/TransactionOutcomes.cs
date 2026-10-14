@@ -58,6 +58,10 @@ public static class TransactionOutcomes
                     Amount = null,
                     ReceiptNumber = "",
                     OriginalReference = failed.MerchantReference,
+                    // The inquiry's own id stays blank so the SDK mints one: copying
+                    // the sale's reference here would put the same value in both
+                    // wire fields and break Hub correlation (ECR-simulator 1.0.8).
+                    MerchantReference = "",
                 },
                 RecoveredFromFailure: true);
         }

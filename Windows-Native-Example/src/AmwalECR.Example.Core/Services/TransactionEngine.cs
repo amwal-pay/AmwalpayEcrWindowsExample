@@ -191,6 +191,55 @@ public sealed class TransactionEngine
         return TransactionOutcomes.FromResult(result, request);
     }
 
+    /// <summary>
+    /// Asks the terminal to put its receipt away. Call from the Close receipt action
+    /// (not when the result dialog is dismissed). Never throws.
+    /// </summary>
+    /// <param name="terminalSerial">Selected terminal.</param>
+    /// <param name="originalMerchantReference">
+    /// Required for Web Service — the sale / void / refund reference. Ignored on LAN.
+    /// </param>
+    public async Task<string> CloseTerminalReceiptAsync(
+        string terminalSerial,
+        string originalMerchantReference = "",
+        CancellationToken ct = default)
+    {
+        var registered = _repository.FindBySerial(terminalSerial);
+        if (registered == null) return $"Terminal {terminalSerial} is no longer registered";
+
+        var mode = registered.Mode;
+        if (!(mode.IsIpBased() || mode.IsUsbCable() || mode == EcrMode.WebService))
+        {
+            return "Close receipt is not available for this terminal mode";
+        }
+
+        var active = ResolveConfig(registered);
+        if (!active.IsReady) return string.Join("\n", active.Issues);
+
+        try
+        {
+            var closed = await OpenSession(registered, active).CloseReceiptAsync(
+                originalMerchantReference: originalMerchantReference,
+                cancellationToken: ct).ConfigureAwait(true);
+            return closed switch
+            {
+                EcrReceiptClosed.Idle => "Terminal is back on its idle screen",
+                EcrReceiptClosed.Refused refused => $"Terminal refused: {refused.Reason}",
+                EcrReceiptClosed.Failed failed => $"Could not reach the terminal: {failed.Failure.Message}",
+                _ => "Could not close the receipt",
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception e)
+        {
+            LoggerFor(active).Debug($"[App] close receipt failed: {e.Message}");
+            return $"Could not close the receipt: {e.Message}";
+        }
+    }
+
     /// <summary>Fetches the e-receipt of an inquired transaction. Never throws except for cancellation.</summary>
     public async Task<EcrReceipt> FetchReceiptAsync(TransactionState.Inquired current, CancellationToken ct)
     {

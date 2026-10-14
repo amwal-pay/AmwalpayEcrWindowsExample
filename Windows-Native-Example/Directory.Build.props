@@ -10,7 +10,7 @@
     Override on the command line if needed:
 
       dotnet build -p:EcrSdkDependency=project
-      dotnet build -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.0
+      dotnet build -p:EcrSdkDependency=nuget -p:EcrSdkVersion=1.0.1
 
     Only AmwalECR.Example.Core references the SDK; the WPF app and the tests
     receive it transitively, so there is exactly one place this is decided.
@@ -18,7 +18,7 @@
   -->
   <PropertyGroup>
     <EcrSdkDependency Condition="'$(EcrSdkDependency)' == ''">nuget</EcrSdkDependency>
-    <EcrSdkVersion Condition="'$(EcrSdkVersion)' == ''">1.0.0</EcrSdkVersion>
+    <EcrSdkVersion Condition="'$(EcrSdkVersion)' == ''">1.0.1</EcrSdkVersion>
     <EcrSdkProjectPath Condition="'$(EcrSdkProjectPath)' == ''">$(MSBuildThisFileDirectory)..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj</EcrSdkProjectPath>
   </PropertyGroup>
 
