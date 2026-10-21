@@ -170,7 +170,7 @@ public static class ResultPresenter
                         : null,
                     RawPayload = Pretty(found.Raw),
                     OffersReceipt = receiptSupported,
-                    ReceiptNote = receiptSupported ? null : "The e-receipt QR is available over Wi\u2011Fi only.",
+                    ReceiptNote = receiptSupported ? null : "The e-receipt QR is available over Wi\u2011Fi and USB cable.",
                 };
 
             default:

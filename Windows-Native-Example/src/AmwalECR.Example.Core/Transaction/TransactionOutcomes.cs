@@ -156,6 +156,17 @@ public static class TransactionOutcomes
     /// </summary>
     public static string UnreachableMessage(string endpoint, int port, string? error)
     {
+        if (endpoint == "USB cable")
+        {
+            var cable = "USB cable is not reachable";
+            if (!string.IsNullOrEmpty(error)) cable += $"\n({error})";
+            return cable + "\n\n" +
+                   "Check:\n" +
+                   "• The terminal is plugged into this computer with a USB cable\n" +
+                   "• The POS app is on USB cable mode\n" +
+                   "• The serial number matches the terminal you selected";
+        }
+
         var text = $"{endpoint} is not reachable";
         if (!string.IsNullOrEmpty(error)) text += $"\n({error})";
         return text + "\n\n" +

@@ -2,14 +2,14 @@
 
 Two runnable tills built on the C# [`AmwalPay.Ecr`](https://github.com/amwal-pay/AmwalpayEcrWindows)
 SDK. Each registers terminals, takes an amount, and runs a sale, void, refund or inquiry against
-an Amwal POS terminal (Wi-Fi/LAN) or the Amwal Hub (Web Service). Read them as reference code for
+an Amwal POS terminal (Wi-Fi) or the Amwal Hub (Web Service). Read them as reference code for
 wiring the SDK into your own app.
 
-| | [Windows-Native-Example](Windows-Native-Example/README.md) | [AmwalECR-Web-Example](AmwalECR-Web-Example/README.md) |
-|---|---|---|
-| **What it is** | WPF desktop app | ASP.NET Core app with a plain HTML/JS page |
-| **Runs on** | Windows 10 1809+ / 11 | Anything .NET 8 runs on, at `http://127.0.0.1:5080` |
-| **Pick it if** | You are building a Windows till | You are putting a till behind a web UI |
+|                     | [Windows-Native-Example](Windows-Native-Example/README.md)         | [AmwalECR-Web-Example](AmwalECR-Web-Example/README.md)           |
+| ------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| **What it is**      | WPF desktop app                                                    | ASP.NET Core app with a plain HTML/JS page                       |
+| **Runs on**         | Windows 10 1809+ / 11                                              | Anything .NET 8 runs on, at `http://127.0.0.1:5080`              |
+| **Pick it if**      | You are building a Windows till                                    | You are putting a till behind a web UI                           |
 | **How it is built** | [implementation.md](Windows-Native-Example/docs/implementation.md) | [implementation.md](AmwalECR-Web-Example/docs/implementation.md) |
 
 Both use the same UI-free library, `Windows-Native-Example/src/AmwalECR.Example.Core`: terminal
@@ -53,14 +53,14 @@ codemagic.yaml             CI: tests, XAML binding check, publish win-x64 / win-
 
 ## Checks
 
-| Check | Run from | Command |
-|---|---|---|
-| Core tests (189) | `Windows-Native-Example/` | `dotnet test tests/AmwalECR.Example.Tests -p:EcrSdkDependency=project` |
-| Web API tests (113) | `AmwalECR-Web-Example/` | `dotnet test tests/AmwalECR.WebExample.Tests -p:EcrSdkDependency=project` |
-| XAML bindings | `Windows-Native-Example/` | `python3 tools/check-xaml-bindings.py` |
-| Web wiring | `AmwalECR-Web-Example/` | `python3 tools/check-web-wiring.py` |
-| Browser amount entry | `AmwalECR-Web-Example/` | `node tools/test-amount.mjs` |
-| Browser smoke test | `AmwalECR-Web-Example/` | `PUPPETEER_DIR=/tmp/pp node tools/smoke-browser.mjs` (app running; needs `puppeteer-core` and Chrome) |
+| Check                | Run from                  | Command                                                                                               |
+| -------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Core tests (189)     | `Windows-Native-Example/` | `dotnet test tests/AmwalECR.Example.Tests -p:EcrSdkDependency=project`                                |
+| Web API tests (113)  | `AmwalECR-Web-Example/`   | `dotnet test tests/AmwalECR.WebExample.Tests -p:EcrSdkDependency=project`                             |
+| XAML bindings        | `Windows-Native-Example/` | `python3 tools/check-xaml-bindings.py`                                                                |
+| Web wiring           | `AmwalECR-Web-Example/`   | `python3 tools/check-web-wiring.py`                                                                   |
+| Browser amount entry | `AmwalECR-Web-Example/`   | `node tools/test-amount.mjs`                                                                          |
+| Browser smoke test   | `AmwalECR-Web-Example/`   | `PUPPETEER_DIR=/tmp/pp node tools/smoke-browser.mjs` (app running; needs `puppeteer-core` and Chrome) |
 
 The WPF windows and view-models have no automated tests; the logic that matters is in Core.
 
@@ -76,7 +76,7 @@ dotnet publish src/AmwalECR.Example/AmwalECR.Example.csproj -c Release -r win-x6
 
 Repeat with `-r win-arm64`. [`codemagic.yaml`](codemagic.yaml) does this on an `app-*` tag and zips
 each output with `tools/` and `START-HERE.txt`. The builds are unsigned: SmartScreen shows
-*More info*, then *Run anyway*. The web sample is published with `dotnet publish` and started with
+_More info_, then _Run anyway_. The web sample is published with `dotnet publish` and started with
 `dotnet AmwalECR.WebExample.dll --urls http://127.0.0.1:5080` from the publish folder.
 
 ## Related

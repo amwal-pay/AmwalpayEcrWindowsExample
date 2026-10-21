@@ -69,7 +69,7 @@ public class TerminalTests
         Assert.Equal(4, EcrMode.WebService.Value());
         Assert.True(EcrMode.Wifi.IsSupportedInExample());
         Assert.True(EcrMode.WebService.IsSupportedInExample());
-        Assert.False(EcrMode.UsbCable.IsSupportedInExample());
+        Assert.True(EcrMode.UsbCable.IsSupportedInExample());
         Assert.False(EcrMode.Bluetooth.IsSupportedInExample());
     }
 }
@@ -127,11 +127,13 @@ public class TerminalValidatorTests
         Assert.False(Check(mode: EcrMode.WebService, terminalId: "5678", merchantId: "1234").Any);
     }
 
-    [Theory]
-    [InlineData(EcrMode.UsbCable)]
-    [InlineData(EcrMode.Bluetooth)]
-    public void Usb_and_bluetooth_need_nothing_beyond_name_and_serial(EcrMode mode) =>
-        Assert.False(Check(mode: mode, ip: "", port: "").Any);
+    [Fact]
+    public void Bluetooth_needs_nothing_beyond_name_and_serial() =>
+        Assert.False(Check(mode: EcrMode.Bluetooth, ip: "", port: "").Any);
+
+    [Fact]
+    public void Usb_cable_needs_nothing_beyond_name_and_serial() =>
+        Assert.False(Check(mode: EcrMode.UsbCable, ip: "", port: "").Any);
 
     [Fact]
     public void A_blank_port_is_stored_as_9100_and_fields_are_trimmed()

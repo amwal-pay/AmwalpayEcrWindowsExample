@@ -13,16 +13,16 @@ folder names). In the VM: Windows 10 1809+ / 11 and internet access for `winget`
 
 Apple silicon: use **Windows 11 ARM** (x86 Windows would be emulated and slow).
 
-1. Open **UTM** -> *Create a New Virtual Machine* -> **Virtualize** -> **Windows**.
+1. Open **UTM** -> _Create a New Virtual Machine_ -> **Virtualize** -> **Windows**.
 2. Tick **Install Windows 10 or higher**. UTM links to a helper that downloads the
    Windows 11 ARM ISO from Microsoft - pick that ISO as the boot image. Also tick
-   *Install drivers and SPICE tools* (gives clipboard sharing and a resizable screen).
+   _Install drivers and SPICE tools_ (gives clipboard sharing and a resizable screen).
 3. Sizing: 4 CPU cores, 8 GB RAM, 64 GB disk. Finish and start the VM, then install
    Windows (choose "I don't have a product key"; sign in with a local account by
    skipping the network step if the installer allows it).
 4. Networking: keep UTM's default **Shared Network**. The Mac is then reachable from
-   the VM at the VM's default gateway (usually `192.168.64.1`). *Bridged* also works;
-   use the Mac's LAN IP instead.
+   the VM at the VM's default gateway (usually `192.168.64.1`). _Bridged_ also works;
+   use the Mac's Wi-Fi IP instead.
 
 ## 2. Serve the SDK, the sample and the fake terminal (on the Mac)
 
@@ -64,7 +64,7 @@ In the app:
 
 1. **Terminals** (top right) -> **Add terminal**: mode Wi-Fi, IP `<MAC-IP>`, port `9100` (or
    the `ECR_PORT` you used), any name and serial.
-2. On the same page set the **Wi-Fi/LAN secure hash key** to the key the script printed.
+2. On the same page set the **Wi-Fi secure hash key** to the key the script printed.
 3. **Back**, pick the terminal, Sale, key an amount, **Start transaction**.
 
 To rehearse the unhappy paths, the script's own fake terminal answers plainly, so start a second
@@ -79,12 +79,12 @@ is in the [WPF README](../../README.md#testing-without-a-terminal).
 
 ## Troubleshooting
 
-| Symptom | Cause |
-| --- | --- |
-| VM cannot download the zip | Wrong Mac IP for the UTM network mode, or the macOS firewall is blocking Python. Test with `Test-NetConnection <MAC-IP> -Port 8000` |
-| App says terminal unreachable | Same check on port 9100, and the terminal's IP in the app must be the Mac's IP as the VM sees it |
-| "The answer was not signed with this terminal's key" | The key in the app differs from the fake terminal's `--key` |
-| `winget` not found | Update *App Installer* from the Microsoft Store, or install the .NET 8 SDK manually from dotnet.microsoft.com |
-| `prepare-on-mac.sh` fails on `../AmwalECR-Windows` | The SDK must be checked out next to the samples repository, named `AmwalECR-Windows` |
-| The VM script cannot find `AmwalECR-Windows-Example\Windows-Native-Example` | The samples repository folder on the Mac has another name; the script and zip use the folder's own name, and `Setup-And-Run.ps1` expects `AmwalECR-Windows-Example` |
-| Connecting to the fake terminal reaches something else, or the fake will not start | Another process owns port 9100 (Dart/Flutter tooling does); use `ECR_PORT=19100` |
+| Symptom                                                                            | Cause                                                                                                                                                               |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| VM cannot download the zip                                                         | Wrong Mac IP for the UTM network mode, or the macOS firewall is blocking Python. Test with `Test-NetConnection <MAC-IP> -Port 8000`                                 |
+| App says terminal unreachable                                                      | Same check on port 9100, and the terminal's IP in the app must be the Mac's IP as the VM sees it                                                                    |
+| "The answer was not signed with this terminal's key"                               | The key in the app differs from the fake terminal's `--key`                                                                                                         |
+| `winget` not found                                                                 | Update _App Installer_ from the Microsoft Store, or install the .NET 8 SDK manually from dotnet.microsoft.com                                                       |
+| `prepare-on-mac.sh` fails on `../AmwalECR-Windows`                                 | The SDK must be checked out next to the samples repository, named `AmwalECR-Windows`                                                                                |
+| The VM script cannot find `AmwalECR-Windows-Example\Windows-Native-Example`        | The samples repository folder on the Mac has another name; the script and zip use the folder's own name, and `Setup-And-Run.ps1` expects `AmwalECR-Windows-Example` |
+| Connecting to the fake terminal reaches something else, or the fake will not start | Another process owns port 9100 (Dart/Flutter tooling does); use `ECR_PORT=19100`                                                                                    |

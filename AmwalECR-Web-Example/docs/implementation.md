@@ -35,32 +35,32 @@ flowchart LR
   A -->|"terminals, settings, log"| C["Core stores<br/>TerminalRepository,<br/>EcrExampleSettings, LogBuffer"]
   R -->|"Task.Run with a<br/>server-owned CTS"| E["Core TransactionEngine"]
   E --> S["SDK EcrSessions.Open<br/>EcrOpenedSession"]
-  S -->|"signed TCP frames"| T["POS terminal, Wi-Fi/LAN"]
+  S -->|"signed TCP frames"| T["POS terminal, Wi-Fi"]
   S -->|"HTTPS, signed JSON"| H["Web Service Hub"]
 ```
 
 The web project has a `ProjectReference` to `AmwalECR.Example.Core`, the UI-free `net8.0` library
 the WPF app is built on; Core owns the SDK dependency switch, so the web project has none.
 
-| From Core, unchanged | Why it is not redone |
-|---|---|
-| `TransactionEngine` | The flow (resolve config, open, probe, execute, classify, close receipt) and the money-safety rules: the app-made reference, `CancelledState`. |
-| `TransactionOutcomes`, `ResultPresenter` | An unknown outcome is never a refusal or a retry; the wording a cashier reads. |
-| `TransactionFormState`, `AmountEntry`, `AmountLimits` | Which fields exist, what is required, messages, bounds. |
-| `TerminalRepository`, `Terminal`, `TerminalValidator`, `EcrModes` | Same JSON store and messages as WPF. |
-| `EcrExampleSettings`, `ISecretProtector`, `SelectedTerminalConfig`, `LogBuffer` | Environment and keys behind a seam; the plan before anyone pays; the last 500 log lines. |
+| From Core, unchanged                                                            | Why it is not redone                                                                                                                           |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TransactionEngine`                                                             | The flow (resolve config, open, probe, execute, classify, close receipt) and the money-safety rules: the app-made reference, `CancelledState`. |
+| `TransactionOutcomes`, `ResultPresenter`                                        | An unknown outcome is never a refusal or a retry; the wording a cashier reads.                                                                 |
+| `TransactionFormState`, `AmountEntry`, `AmountLimits`                           | Which fields exist, what is required, messages, bounds.                                                                                        |
+| `TerminalRepository`, `Terminal`, `TerminalValidator`, `EcrModes`               | Same JSON store and messages as WPF.                                                                                                           |
+| `EcrExampleSettings`, `ISecretProtector`, `SelectedTerminalConfig`, `LogBuffer` | Environment and keys behind a seam; the plan before anyone pays; the last 500 log lines.                                                       |
 
-| Added here | Why |
-|---|---|
-| `Services/TransactionRegistry.cs` | WPF holds one transaction in a view-model; a server needs runs that outlive requests, plus a per-terminal guard ([4](#4-the-central-design-transactions-run-on-the-server)). |
-| `Hosting/DataProtectionSecretProtector.cs` | DPAPI is Windows-only; the cross-platform `ISecretProtector`. |
-| `Hosting/EcrApp.cs`, `DataPaths.cs` | The composition root WPF does in `App.OnStartup`. |
-| `Hosting/SecurityMiddleware.cs` | A browser-facing app that can take payments needs guards a desktop app does not. |
-| `Api/*.cs`, `Api/Dtos.cs` | Thin translators from HTTP to Core; the DTOs are the wire contract. |
-| `wwwroot/` | The UI, a port of the WPF views. |
+| Added here                                 | Why                                                                                                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Services/TransactionRegistry.cs`          | WPF holds one transaction in a view-model; a server needs runs that outlive requests, plus a per-terminal guard ([4](#4-the-central-design-transactions-run-on-the-server)). |
+| `Hosting/DataProtectionSecretProtector.cs` | DPAPI is Windows-only; the cross-platform `ISecretProtector`.                                                                                                                |
+| `Hosting/EcrApp.cs`, `DataPaths.cs`        | The composition root WPF does in `App.OnStartup`.                                                                                                                            |
+| `Hosting/SecurityMiddleware.cs`            | A browser-facing app that can take payments needs guards a desktop app does not.                                                                                             |
+| `Api/*.cs`, `Api/Dtos.cs`                  | Thin translators from HTTP to Core; the DTOs are the wire contract.                                                                                                          |
+| `wwwroot/`                                 | The UI, a port of the WPF views.                                                                                                                                             |
 
-Rule of thumb when extending: a *rule* (validation, wording, outcome classification) belongs in
-Core so both front ends get it; *HTTP, browsers or process lifetime* belongs here.
+Rule of thumb when extending: a _rule_ (validation, wording, outcome classification) belongs in
+Core so both front ends get it; _HTTP, browsers or process lifetime_ belongs here.
 
 ---
 
@@ -97,11 +97,11 @@ Core so both front ends get it; *HTTP, browsers or process lifetime* belongs her
 `Environment.SpecialFolder.LocalApplicationData/AmwalECR-WebExample` (`%LOCALAPPDATA%` on
 Windows, `~/Library/Application Support` on macOS, `~/.local/share` on Linux).
 
-| Path | What |
-|---|---|
+| Path             | What                                                                                                              |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `terminals.json` | Terminal list (camelCase, keyed by serial). A corrupt file is copied to `terminals.json.unreadable` and reported. |
-| `settings.dat` | Environment and both signing keys, encrypted with the protector. |
-| `keys/` | The Data Protection key ring. |
+| `settings.dat`   | Environment and both signing keys, encrypted with the protector.                                                  |
+| `keys/`          | The Data Protection key ring.                                                                                     |
 
 `Ensure()` creates the root and `keys`. On Unix a root it **created** is `0700`; a `DataDir` that
 already existed keeps its mode (it may be shared on purpose). `keys` is **always** tightened to
@@ -119,11 +119,11 @@ no `Ecr__...` section: terminals and keys go through the API.
 
 The signing keys live in `settings.dat`, encrypted through Core's `ISecretProtector`.
 
-| | WPF | Web |
-|---|---|---|
-| Implementation | `DpapiSecretProtector`: `ProtectedData`, `CurrentUser` | `DataProtectionSecretProtector`: `IDataProtector` |
-| Where the key lives | Windows user profile; the app stores none | An XML key ring in `<DataDir>/keys`, 90-day activation lifetime; old keys kept so old data stays readable |
-| Portable | Windows only | Any OS |
+|                     | WPF                                                    | Web                                                                                                       |
+| ------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| Implementation      | `DpapiSecretProtector`: `ProtectedData`, `CurrentUser` | `DataProtectionSecretProtector`: `IDataProtector`                                                         |
+| Where the key lives | Windows user profile; the app stores none              | An XML key ring in `<DataDir>/keys`, 90-day activation lifetime; old keys kept so old data stays readable |
+| Portable            | Windows only                                           | Any OS                                                                                                    |
 
 **The key ring is not itself encrypted.** No `ProtectKeysWith*` is configured, so Data Protection
 logs `No XML encryptor configured...` at every start. The effective protection is the filesystem:
@@ -164,15 +164,15 @@ the run**; nothing looks at `RequestAborted`; the browser watches with `GET
 One `lock (_gate)` guards two dictionaries: runs by id and the running run by terminal serial.
 The engine call itself is outside the lock.
 
-| Method | Behaviour |
-|---|---|
-| `Start(request, usesWebService, timeoutSeconds)` | Sweeps; if a run is already running on that serial -> `Busy(existingId)` (`409`); else creates the run, claims the serial, begins. Check-and-claim is one critical section, so 8 concurrent POSTs let exactly one through. |
-| `Find(id)` / `Pending()` | Snapshots under the lock, so state and version belong together. `Pending()` is every un-acknowledged run, newest first. |
-| `Cancel(id)` | `null` (-> 404) if unknown; else `cts.Cancel()` and returns the snapshot at that instant. |
-| `Inquire(id)` | Only for `Failed` **with** an `InquirableReference`; refuses while the terminal is running something else. Replaces `run.Request` with an Inquiry by that reference (blank own `MerchantReference`) and begins it on the **same run id**. |
-| `RequestReceipt(id)` | Only for an `Inquired` state without a receipt, not already fetching, not Web Service. Fire-and-forget read; the result is stored on the run. |
-| `CloseReceiptAsync(id)` | Only for a `Completed` state. On Web Service takes the result's `MerchantReference` as `originalMerchantReference` (none -> `409 "Close receipt needs the sale / void / refund reference"`). Calls `engine.CloseTerminalReceiptAsync`; does **not** change the run's state, so the dialog stays open. |
-| `Acknowledge(id)` | `false` (-> 409) while busy; removes the run; unknown id -> `true` (idempotent, 204). |
+| Method                                           | Behaviour                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Start(request, usesWebService, timeoutSeconds)` | Sweeps; if a run is already running on that serial -> `Busy(existingId)` (`409`); else creates the run, claims the serial, begins. Check-and-claim is one critical section, so 8 concurrent POSTs let exactly one through.                                                                            |
+| `Find(id)` / `Pending()`                         | Snapshots under the lock, so state and version belong together. `Pending()` is every un-acknowledged run, newest first.                                                                                                                                                                               |
+| `Cancel(id)`                                     | `null` (-> 404) if unknown; else `cts.Cancel()` and returns the snapshot at that instant.                                                                                                                                                                                                             |
+| `Inquire(id)`                                    | Only for `Failed` **with** an `InquirableReference`; refuses while the terminal is running something else. Replaces `run.Request` with an Inquiry by that reference (blank own `MerchantReference`) and begins it on the **same run id**.                                                             |
+| `RequestReceipt(id)`                             | Only for an `Inquired` state without a receipt, not already fetching, not Web Service. Fire-and-forget read; the result is stored on the run.                                                                                                                                                         |
+| `CloseReceiptAsync(id)`                          | Only for a `Completed` state. On Web Service takes the result's `MerchantReference` as `originalMerchantReference` (none -> `409 "Close receipt needs the sale / void / refund reference"`). Calls `engine.CloseTerminalReceiptAsync`; does **not** change the run's state, so the dialog stays open. |
+| `Acknowledge(id)`                                | `false` (-> 409) while busy; removes the run; unknown id -> `true` (idempotent, 204).                                                                                                                                                                                                                 |
 
 **Single-flight per terminal.** The guard is server-side and per serial, not a disabled button:
 a double click, a second tab or a repeated POST must not put two sales on one terminal.
@@ -229,15 +229,29 @@ stateDiagram-v2
   "statusText": "Waiting for the POS terminal...",
   "version": 3,
   "dialog": {
-    "headline": "Approved", "tone": "approved", "amount": "1.234",
-    "message": null, "note": null,
-    "fields": [ { "label": "Auth code", "value": "514297" }, { "label": "Card", "value": "483312******1234" },
-                { "label": "Reference", "value": "ORDER-1001" } ],
+    "headline": "Approved",
+    "tone": "approved",
+    "amount": "1.234",
+    "message": null,
+    "note": null,
+    "fields": [
+      { "label": "Auth code", "value": "514297" },
+      { "label": "Card", "value": "483312******1234" },
+      { "label": "Reference", "value": "ORDER-1001" }
+    ],
     "hints": [],
     "rawPayload": "{ ... the terminal's full answer, indented ... }",
-    "isUnknownOutcome": false, "inquirableReference": null, "unknownOutcomeWarning": null,
-    "offersReceipt": false, "receiptNote": null,
-    "receipt": { "showButton": false, "fetching": false, "url": null, "problem": null },
+    "isUnknownOutcome": false,
+    "inquirableReference": null,
+    "unknownOutcomeWarning": null,
+    "offersReceipt": false,
+    "receiptNote": null,
+    "receipt": {
+      "showButton": false,
+      "fetching": false,
+      "url": null,
+      "problem": null
+    },
     "canCloseReceipt": true
   },
   "timeoutSeconds": 120,
@@ -245,16 +259,16 @@ stateDiagram-v2
 }
 ```
 
-| Field | Meaning |
-|---|---|
-| `state` | `idle` `checking` `inProgress` `completed` `inquired` `failed` |
-| `operation` | The **current** request's display name; changes from `Sale` to `Inquiry` when a look-up runs on the same run. |
-| `statusText` | Spinner text, meaningful only while `busy` (`"Checking the terminal..."` for `checking`, `"Waiting for the POS terminal..."` for every other state). |
-| `version` | Starts at 1, increments on every change of that run; a client keeps the highest and discards older responses. |
-| `timeoutSeconds` | The configured response timeout for this run's terminal. |
-| `remainingSeconds` | Seconds left of it while busy or fetching a receipt (server-counted); `null` otherwise. |
-| `dialog` | `null` while busy or idle; else Core's `ResultDialogModel` plus the receipt bits. `tone` is `approved` or `declined` (also used for failures and "not found"). `isUnknownOutcome` <=> `inquirableReference != null`. |
-| `dialog.canCloseReceipt` | True only for a `completed` state: the page may show **Close receipt**. |
+| Field                    | Meaning                                                                                                                                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state`                  | `idle` `checking` `inProgress` `completed` `inquired` `failed`                                                                                                                                                       |
+| `operation`              | The **current** request's display name; changes from `Sale` to `Inquiry` when a look-up runs on the same run.                                                                                                        |
+| `statusText`             | Spinner text, meaningful only while `busy` (`"Checking the terminal..."` for `checking`, `"Waiting for the POS terminal..."` for every other state).                                                                 |
+| `version`                | Starts at 1, increments on every change of that run; a client keeps the highest and discards older responses.                                                                                                        |
+| `timeoutSeconds`         | The configured response timeout for this run's terminal.                                                                                                                                                             |
+| `remainingSeconds`       | Seconds left of it while busy or fetching a receipt (server-counted); `null` otherwise.                                                                                                                              |
+| `dialog`                 | `null` while busy or idle; else Core's `ResultDialogModel` plus the receipt bits. `tone` is `approved` or `declined` (also used for failures and "not found"). `isUnknownOutcome` <=> `inquirableReference != null`. |
+| `dialog.canCloseReceipt` | True only for a `completed` state: the page may show **Close receipt**.                                                                                                                                              |
 
 **When to stop polling** (`transaction.js`): keep polling every 500 ms while `busy` or while
 `dialog.receipt.fetching`; stop when neither, and on `404`; a network error is **not** a stop
@@ -266,12 +280,12 @@ stateDiagram-v2
 Cancel means "stop waiting", not "undo". The engine catches cancellation only when its own token
 is cancelled and maps it through `TransactionEngine.CancelledState`:
 
-| When cancel lands | Result |
-|---|---|
-| During the reachability probe (nothing sent) | `idle` |
-| After the request went out, `Inquiry` | `idle` (a read; nothing to lose) |
+| When cancel lands                                  | Result                                                                                                                                                   |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| During the reachability probe (nothing sent)       | `idle`                                                                                                                                                   |
+| After the request went out, `Inquiry`              | `idle` (a read; nothing to lose)                                                                                                                         |
 | After the request went out, `Sale`/`Void`/`Refund` | `failed` **with the reference**: "You stopped waiting for the terminal. This does not cancel the transaction..." - an unknown outcome, never "cancelled" |
-| Run already finished | No-op; `200` with the current state |
+| Run already finished                               | No-op; `200` with the current state                                                                                                                      |
 
 `POST .../cancel` answers with the snapshot at the moment of the call, normally still busy: keep
 polling.
@@ -331,7 +345,7 @@ Against `fake_pos_server_signed.py`, `--drop-sale` exercises the first branch an
 
 - **Acknowledge** (`DELETE /api/transactions/{id}`) means "the operator has read the result". The
   page sends it when the result dialog closes by any route, Escape included, so closing an
-  *Outcome unknown* dialog discards the run and its reference from the server. The reference is
+  _Outcome unknown_ dialog discards the run and its reference from the server. The reference is
   still in the debug log and the dialog's Copy button exists for this reason.
 - **Eviction.** `Sweep()` drops runs that are not busy and whose last update is older than
   `FinishedRetention` (12 h; an unknown outcome must survive a night away from the till). It
@@ -353,53 +367,53 @@ JSON in, JSON out. Rules for every `/api` call (from `SecurityMiddleware`):
   included; there is no CORS).
 - `Cache-Control: no-store` on every `/api` response.
 
-| Error shape | Used for |
-|---|---|
-| `{ "error": "...", "transactionId": null }` | 400, 404, 409, 500. `transactionId` is set only on the 409s that name the run already running. |
+| Error shape                                                 | Used for                                                                                                    |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `{ "error": "...", "transactionId": null }`                 | 400, 404, 409, 500. `transactionId` is set only on the 409s that name the run already running.              |
 | `{ "errors": { "<field>": "<message>" }, "message": null }` | 422. `message` is set only when the terminal's plan is not ready (issues joined with `\n`, `errors` empty). |
-| `{ "error": "..." }` | 403 and 415 from the guard. |
-| empty body | 413 (body over 64 KB) and 400 for a `Host` not in `AllowedHosts` (Kestrel's own page). |
+| `{ "error": "..." }`                                        | 403 and 415 from the guard.                                                                                 |
+| empty body                                                  | 413 (body over 64 KB) and 400 for a `Host` not in `AllowedHosts` (Kestrel's own page).                      |
 
 ### Endpoint reference (21 routes)
 
-| Method and path | Request | Success | Errors |
-|---|---|---|---|
-| `GET /api/meta` | | `200 Meta`, see [6](#6-validation) | |
-| `GET /api/terminals` | | `200 { terminals: TerminalView[], notice }` | |
-| `POST /api/terminals` | `name, serialNumber, ecrMode (int), ipAddress, port, terminalId, merchantId` (text but `ecrMode`) | `200 TerminalView` | `422` keys `mode name serial ip port terminalId merchantId`; a duplicate serial, or any save failure, is `serial` |
-| `PUT /api/terminals/{serial}` | same; changing `serialNumber` replaces the entry | `200 TerminalView` | `404`; `422` |
-| `DELETE /api/terminals/{serial}` | `{}` | `204` | `404`; `500` if the file cannot be written |
-| `GET /api/terminals/{serial}/config[?announce=true]` | | `200 ConfigView`: `serialNumber, modeLabel, transportLabel, connectionSummary, keyLabel, keyConfigured, keyStatus, issues[], isReady, isSupported, usesWebService`; `announce=true` writes the "selected ..." lines to the log | `404` |
-| `GET /api/settings` | | `200 { environment, wifi: {label, configured}, webService: {label, configured}, notice }`, never a key | |
-| `PUT /api/settings/environment` | `{ environment }` (`SIT` `UAT` `PROD`, case-insensitive) | `200` settings | `422` under `environment`; `500` on write failure (value stays in memory) |
-| `PUT /api/settings/keys/{kind}` | `{ value }`; `kind` = `wifi` or `webService` | `200` settings | `404`; `422` under `value`: blank or not even-length hex of at least 16; `500` |
-| `DELETE /api/settings/keys/{kind}` | `{}` | `200` settings | `404`; `500` |
-| `GET /api/transactions` | | `200 { transactions: TransactionView[] }`, un-acknowledged, newest first | |
-| `POST /api/transactions` | raw form: `terminalSerial, type, amountDigits, receiptNumber, originalTerminalId, originalDate, useOtherTerminal, lookUpByReference, originalReference, merchantReference` | `202 TransactionView` (`state: "checking"`) | `422` (below); `409` `"A transaction is already running on this terminal"` + `transactionId` |
-| `GET /api/transactions/{id}` | | `200 TransactionView` | `404 "No such transaction"` |
-| `POST /api/transactions/{id}/cancel` | `{}` | `200 TransactionView` (snapshot at the call) | `404` |
-| `POST /api/transactions/{id}/inquire` | `{}` | `202 TransactionView` (`operation: "Inquiry"`, same id) | `404`; `409` `"This transaction has no unknown outcome to look up"`; `409` `"Another transaction is running on this terminal"` + `transactionId` |
-| `POST /api/transactions/{id}/receipt` | `{}` | `202 TransactionView`; poll for `dialog.receipt.url` | `404`; `409` `"No receipt can be requested for this transaction"` (not an inquiry result, already has one, already fetching, or Web Service) |
-| `POST /api/transactions/{id}/close-receipt` | `{}` | `200 { message, transaction }`: `message` is the engine's text (`Terminal is back on its idle screen`, `Terminal refused: ...`, `Could not reach the terminal: ...`) | `404`; `409` `"Close receipt is not available for this transaction"` (not a `completed` state) or `"Close receipt needs the sale / void / refund reference"` (Web Service, no reference on the result) |
-| `DELETE /api/transactions/{id}` | `{}` | `204`, also for an unknown id | `409 "The transaction is still running"` |
-| `GET /api/qr?text=` | | `200 image/svg+xml` (QRCoder `SvgQRCode`, level M) | `400` blank, over 1024 chars, or too long for a QR |
-| `GET /api/log` | | `200 { text, count, capacity }` | |
-| `DELETE /api/log` | `{}` | `204` | |
-| any other `/api/*` | | | `404 {"error":"No such endpoint"}` |
+| Method and path                                      | Request                                                                                                                                                                    | Success                                                                                                                                                                                                                        | Errors                                                                                                                                                                                                 |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/meta`                                      |                                                                                                                                                                            | `200 Meta`, see [6](#6-validation)                                                                                                                                                                                             |                                                                                                                                                                                                        |
+| `GET /api/terminals`                                 |                                                                                                                                                                            | `200 { terminals: TerminalView[], notice }`                                                                                                                                                                                    |                                                                                                                                                                                                        |
+| `POST /api/terminals`                                | `name, serialNumber, ecrMode (int), ipAddress, port, terminalId, merchantId` (text but `ecrMode`)                                                                          | `200 TerminalView`                                                                                                                                                                                                             | `422` keys `mode name serial ip port terminalId merchantId`; a duplicate serial, or any save failure, is `serial`                                                                                      |
+| `PUT /api/terminals/{serial}`                        | same; changing `serialNumber` replaces the entry                                                                                                                           | `200 TerminalView`                                                                                                                                                                                                             | `404`; `422`                                                                                                                                                                                           |
+| `DELETE /api/terminals/{serial}`                     | `{}`                                                                                                                                                                       | `204`                                                                                                                                                                                                                          | `404`; `500` if the file cannot be written                                                                                                                                                             |
+| `GET /api/terminals/{serial}/config[?announce=true]` |                                                                                                                                                                            | `200 ConfigView`: `serialNumber, modeLabel, transportLabel, connectionSummary, keyLabel, keyConfigured, keyStatus, issues[], isReady, isSupported, usesWebService`; `announce=true` writes the "selected ..." lines to the log | `404`                                                                                                                                                                                                  |
+| `GET /api/settings`                                  |                                                                                                                                                                            | `200 { environment, wifi: {label, configured}, webService: {label, configured}, notice }`, never a key                                                                                                                         |                                                                                                                                                                                                        |
+| `PUT /api/settings/environment`                      | `{ environment }` (`SIT` `UAT` `PROD`, case-insensitive)                                                                                                                   | `200` settings                                                                                                                                                                                                                 | `422` under `environment`; `500` on write failure (value stays in memory)                                                                                                                              |
+| `PUT /api/settings/keys/{kind}`                      | `{ value }`; `kind` = `wifi` or `webService`                                                                                                                               | `200` settings                                                                                                                                                                                                                 | `404`; `422` under `value`: blank or not even-length hex of at least 16; `500`                                                                                                                         |
+| `DELETE /api/settings/keys/{kind}`                   | `{}`                                                                                                                                                                       | `200` settings                                                                                                                                                                                                                 | `404`; `500`                                                                                                                                                                                           |
+| `GET /api/transactions`                              |                                                                                                                                                                            | `200 { transactions: TransactionView[] }`, un-acknowledged, newest first                                                                                                                                                       |                                                                                                                                                                                                        |
+| `POST /api/transactions`                             | raw form: `terminalSerial, type, amountDigits, receiptNumber, originalTerminalId, originalDate, useOtherTerminal, lookUpByReference, originalReference, merchantReference` | `202 TransactionView` (`state: "checking"`)                                                                                                                                                                                    | `422` (below); `409` `"A transaction is already running on this terminal"` + `transactionId`                                                                                                           |
+| `GET /api/transactions/{id}`                         |                                                                                                                                                                            | `200 TransactionView`                                                                                                                                                                                                          | `404 "No such transaction"`                                                                                                                                                                            |
+| `POST /api/transactions/{id}/cancel`                 | `{}`                                                                                                                                                                       | `200 TransactionView` (snapshot at the call)                                                                                                                                                                                   | `404`                                                                                                                                                                                                  |
+| `POST /api/transactions/{id}/inquire`                | `{}`                                                                                                                                                                       | `202 TransactionView` (`operation: "Inquiry"`, same id)                                                                                                                                                                        | `404`; `409` `"This transaction has no unknown outcome to look up"`; `409` `"Another transaction is running on this terminal"` + `transactionId`                                                       |
+| `POST /api/transactions/{id}/receipt`                | `{}`                                                                                                                                                                       | `202 TransactionView`; poll for `dialog.receipt.url`                                                                                                                                                                           | `404`; `409` `"No receipt can be requested for this transaction"` (not an inquiry result, already has one, already fetching, or Web Service)                                                           |
+| `POST /api/transactions/{id}/close-receipt`          | `{}`                                                                                                                                                                       | `200 { message, transaction }`: `message` is the engine's text (`Terminal is back on its idle screen`, `Terminal refused: ...`, `Could not reach the terminal: ...`)                                                           | `404`; `409` `"Close receipt is not available for this transaction"` (not a `completed` state) or `"Close receipt needs the sale / void / refund reference"` (Web Service, no reference on the result) |
+| `DELETE /api/transactions/{id}`                      | `{}`                                                                                                                                                                       | `204`, also for an unknown id                                                                                                                                                                                                  | `409 "The transaction is still running"`                                                                                                                                                               |
+| `GET /api/qr?text=`                                  |                                                                                                                                                                            | `200 image/svg+xml` (QRCoder `SvgQRCode`, level M)                                                                                                                                                                             | `400` blank, over 1024 chars, or too long for a QR                                                                                                                                                     |
+| `GET /api/log`                                       |                                                                                                                                                                            | `200 { text, count, capacity }`                                                                                                                                                                                                |                                                                                                                                                                                                        |
+| `DELETE /api/log`                                    | `{}`                                                                                                                                                                       | `204`                                                                                                                                                                                                                          |                                                                                                                                                                                                        |
+| any other `/api/*`                                   |                                                                                                                                                                            |                                                                                                                                                                                                                                | `404 {"error":"No such endpoint"}`                                                                                                                                                                     |
 
 **`POST /api/transactions` in detail.** `type` is `Sale`, `Void`, `Refund` or `Inquiry`
 (case-insensitive, from `EcrTransactionTypes.MenuOptions`). Inputs are normalised the way the
 WPF fields normalise typing (`TransactionFormMapper`):
 
-| Field | Normalisation |
-|---|---|
-| `amountDigits` | `AmountEntry.KeyedDigits`: ASCII digits, no leading zeros, cut at 9. Digits are mills: `"1234"` = 1.234 OMR. |
-| `receiptNumber` | digits only, at most 6 |
-| `originalTerminalId` | digits only |
-| `originalDate` | `yyyy-MM-dd` or `yyyyMMdd`; blank or unparseable -> the server's today; a future date -> today. Never an error. |
-| `originalReference` | cut at 32 characters |
-| `merchantReference` | not cut: over 32 or containing space, `&`, `=` or a non-printable -> `422` |
-| booleans | missing means `false` |
+| Field                | Normalisation                                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `amountDigits`       | `AmountEntry.KeyedDigits`: ASCII digits, no leading zeros, cut at 9. Digits are mills: `"1234"` = 1.234 OMR.    |
+| `receiptNumber`      | digits only, at most 6                                                                                          |
+| `originalTerminalId` | digits only                                                                                                     |
+| `originalDate`       | `yyyy-MM-dd` or `yyyyMMdd`; blank or unparseable -> the server's today; a future date -> today. Never an error. |
+| `originalReference`  | cut at 32 characters                                                                                            |
+| `merchantReference`  | not cut: over 32 or containing space, `&`, `=` or a non-printable -> `422`                                      |
+| booleans             | missing means `false`                                                                                           |
 
 Fields the chosen type does not show are ignored. `422` keys: `terminal`, `type`, `amount`,
 `receiptNumber`, `originalTerminalId`, `originalReference`, `merchantReference`; or, with empty
@@ -464,24 +478,24 @@ filters, which the server re-applies.
 ## 7. Security model
 
 No authentication. The app can take payments, register terminals, replace keys and show a log
-with masked card numbers, for whoever can reach it. The controls make a *local, single-operator*
+with masked card numbers, for whoever can reach it. The controls make a _local, single-operator_
 deployment reasonable; they do not make it a service.
 
-| Control | Detail |
-|---|---|
-| Loopback binding | `Urls = http://127.0.0.1:5080`; a start-up warning for any non-loopback address. |
-| Host filtering | `AllowedHosts = 127.0.0.1;localhost;[::1]`; defeats DNS rebinding. |
-| Security headers | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. No `unsafe-inline`. |
-| `/api` guard | Refuses cross-origin requests (`Sec-Fetch-Site` not `same-origin`/`none`, so even `same-site` is refused, or an `Origin` whose authority differs from `Request.Host`) and mutating calls that are not `application/json`. |
-| No CORS | A preflight gets `403`. |
-| Why JSON-only matters | A cross-site HTML form can send a POST without CORS, but only as `form-urlencoded`/`multipart`/`text/plain`. Requiring `application/json` forces a preflight, which fails. |
-| Bounded input, no leaks | 64 KB cap (`413`); the exception handler never returns exception text; keys are write-only. |
-| Rendering | Server-supplied text goes through `textContent`/`setAttribute` ([8](#8-front-end)). |
+| Control                 | Detail                                                                                                                                                                                                                                                               |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loopback binding        | `Urls = http://127.0.0.1:5080`; a start-up warning for any non-loopback address.                                                                                                                                                                                     |
+| Host filtering          | `AllowedHosts = 127.0.0.1;localhost;[::1]`; defeats DNS rebinding.                                                                                                                                                                                                   |
+| Security headers        | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`. No `unsafe-inline`. |
+| `/api` guard            | Refuses cross-origin requests (`Sec-Fetch-Site` not `same-origin`/`none`, so even `same-site` is refused, or an `Origin` whose authority differs from `Request.Host`) and mutating calls that are not `application/json`.                                            |
+| No CORS                 | A preflight gets `403`.                                                                                                                                                                                                                                              |
+| Why JSON-only matters   | A cross-site HTML form can send a POST without CORS, but only as `form-urlencoded`/`multipart`/`text/plain`. Requiring `application/json` forces a preflight, which fails.                                                                                           |
+| Bounded input, no leaks | 64 KB cap (`413`); the exception handler never returns exception text; keys are write-only.                                                                                                                                                                          |
+| Rendering               | Server-supplied text goes through `textContent`/`setAttribute` ([8](#8-front-end)).                                                                                                                                                                                  |
 
 **Deliberately not there:** authentication and authorisation (loopback does not defend against
 another local user or process); TLS; CSRF tokens (the JSON-only + Origin + Fetch-Metadata +
-no-CORS combination replaces them and is sound *because there are no cookies or ambient
-credentials*; if you add cookie auth, keep the guards and add antiforgery); rate limiting, audit
+no-CORS combination replaces them and is sound _because there are no cookies or ambient
+credentials_; if you add cookie auth, keep the guards and add antiforgery); rate limiting, audit
 logging, per-user terminal ownership, HSTS.
 
 ### Before you expose this
@@ -508,15 +522,15 @@ Do not bind to anything but loopback until all of these are done:
 Plain HTML, CSS and ES modules; no build step, bundler, CDN or `package.json`. `index.html` loads
 one `<script type="module" src="app.js">`.
 
-| File | Owns |
-|---|---|
-| `app.js` | Boot: fetch `/api/meta` (failure shows the `#fatal` banner), init Transaction and Terminals (settings embedded on Terminals), hash routing (`#transaction`, `#terminals`; `#settings` redirects), Escape-to-go-back, the shared `confirm()` modal, refresh on tab visibility. |
-| `js/api.js` | The only place that calls `fetch`. `ApiError` (`status`, `body`, `.fields`); always sends JSON on mutating calls; `acknowledge` uses `keepalive` so it survives a reload; includes `closeReceipt(id)`. |
-| `js/dom.js` | `$`, `h()` (element builder), `show()`, `setText()`, `announce()`, `copyText()`. |
-| `js/amount.js` | Pure amount functions plus `attachAmountInput()`; DOM-free at the top so node can test it. |
-| `js/transaction.js` | The transaction screen: form state, layout from meta, config card, start, the poll loop, the countdown, result dialog, look-up, receipt and close-receipt actions, reload-resume. |
-| `js/terminals.js`, `js/settings.js` | Terminal list and dialog; environment radios and write-only key boxes. |
-| `js/log.js` | Debug panel: polls `/api/log` every second only while the `<details>` is open and the tab visible. |
+| File                                | Owns                                                                                                                                                                                                                                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app.js`                            | Boot: fetch `/api/meta` (failure shows the `#fatal` banner), init Transaction and Terminals (settings embedded on Terminals), hash routing (`#transaction`, `#terminals`; `#settings` redirects), Escape-to-go-back, the shared `confirm()` modal, refresh on tab visibility. |
+| `js/api.js`                         | The only place that calls `fetch`. `ApiError` (`status`, `body`, `.fields`); always sends JSON on mutating calls; `acknowledge` uses `keepalive` so it survives a reload; includes `closeReceipt(id)`.                                                                        |
+| `js/dom.js`                         | `$`, `h()` (element builder), `show()`, `setText()`, `announce()`, `copyText()`.                                                                                                                                                                                              |
+| `js/amount.js`                      | Pure amount functions plus `attachAmountInput()`; DOM-free at the top so node can test it.                                                                                                                                                                                    |
+| `js/transaction.js`                 | The transaction screen: form state, layout from meta, config card, start, the poll loop, the countdown, result dialog, look-up, receipt and close-receipt actions, reload-resume.                                                                                             |
+| `js/terminals.js`, `js/settings.js` | Terminal list and dialog; environment radios and write-only key boxes.                                                                                                                                                                                                        |
+| `js/log.js`                         | Debug panel: polls `/api/log` every second only while the `<details>` is open and the tab visible.                                                                                                                                                                            |
 
 **Rendering rule.** Server-supplied text is only set through `textContent`, `setAttribute` or
 `h()`. There is no `innerHTML`, `eval(` or inline handler; a test enforces it textually over
@@ -578,23 +592,23 @@ dotnet test tests/AmwalECR.WebExample.Tests -p:EcrSdkDependency=project    # 113
 
 xUnit. Each test gets its own **in-process host** (`WebApplicationFactory<Program>`) on a temp
 data folder (`DataDir` injected), an in-process **signed loopback terminal**, and, through the
-app's own API, one registered Wi-Fi terminal with the LAN key saved (`Harness.cs`). Time-dependent
+app's own API, one registered Wi-Fi terminal with the key saved (`Harness.cs`). Time-dependent
 tests replace `TimeProvider` with `ManualTime`. `FakeTerminal` is a `TcpListener` that speaks the
 real protocol (2-byte big-endian length + JSON, echoed `nonce`, `secureHash`), so the whole path
 runs against the real SDK; it is a copy of Core's `EngineTests.cs` one, so Core's own tests are
 not run twice.
 
-| Class | Pins |
-|---|---|
-| `TerminalTests` | CRUD by serial, persistence across a restart, WPF messages, blank port = 9100, numeric Web Service IDs, USB/Bluetooth unsupported, duplicate serial under `serial`. |
-| `SettingsTests` | Starts unconfigured on SIT; a key is never echoed; invalid/blank keys refused; two independent keys; **`settings.dat` is not readable text**; a restart decrypts through the ring; a lost ring is a notice; data folder `0700` on Unix. |
-| `ConfigCardTests` | Per mode: transport, connection, key state without the key; a missing key is an issue before paying; config follows key changes; `announce` logs. |
-| `MetaTests` | Operations carry the SDK flags and Core's layouts; modes, environments and limits come from Core. |
-| `FormValidationTests` | Bounds and messages, digit normalisation, reference rules, per-operation requirements, errors equal Core's own answers, hidden fields ignored, date default. |
+| Class                       | Pins                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TerminalTests`             | CRUD by serial, persistence across a restart, WPF messages, blank port = 9100, numeric Web Service IDs, USB/Bluetooth unsupported, duplicate serial under `serial`.                                                                                                                                                                                                                                                                          |
+| `SettingsTests`             | Starts unconfigured on SIT; a key is never echoed; invalid/blank keys refused; two independent keys; **`settings.dat` is not readable text**; a restart decrypts through the ring; a lost ring is a notice; data folder `0700` on Unix.                                                                                                                                                                                                      |
+| `ConfigCardTests`           | Per mode: transport, connection, key state without the key; a missing key is an issue before paying; config follows key changes; `announce` logs.                                                                                                                                                                                                                                                                                            |
+| `MetaTests`                 | Operations carry the SDK flags and Core's layouts; modes, environments and limits come from Core.                                                                                                                                                                                                                                                                                                                                            |
+| `FormValidationTests`       | Bounds and messages, digit normalisation, reference rules, per-operation requirements, errors equal Core's own answers, hidden fields ignored, date default.                                                                                                                                                                                                                                                                                 |
 | `TransactionLifecycleTests` | Approved, generated reference, declined is not an error, partial approval, unreachable is not unknown, lost answer recovered, lost answer + lost follow-up -> `Inquire` (same id, one `SALE`), cancel = unknown outcome, `409` on a second start (8 concurrent -> one `202`), terminals in parallel, a payment survives an aborted poll, reload finds runs, acknowledge rules, 12 h eviction, wrong-key signature not believed, void/refund. |
-| `ReceiptTests`, `QrTests` | Receipt fetch and QR render; failure reported not thrown; receipt only for an inquiry result; QR is SVG, limits. |
-| `LogTests` | Wire traffic visible, no key, bounded to 500, clearable. |
-| `SecurityTests` | Headers, no CORS, non-JSON mutating calls refused and nothing reaches the terminal, foreign `Origin`/`Host`, no inline script/style/handlers/CDN/`innerHTML`/`eval`, no error detail, JSON 404. |
+| `ReceiptTests`, `QrTests`   | Receipt fetch and QR render; failure reported not thrown; receipt only for an inquiry result; QR is SVG, limits.                                                                                                                                                                                                                                                                                                                             |
+| `LogTests`                  | Wire traffic visible, no key, bounded to 500, clearable.                                                                                                                                                                                                                                                                                                                                                                                     |
+| `SecurityTests`             | Headers, no CORS, non-JSON mutating calls refused and nothing reaches the terminal, foreign `Origin`/`Host`, no inline script/style/handlers/CDN/`innerHTML`/`eval`, no error detail, JSON 404.                                                                                                                                                                                                                                              |
 
 Not covered by any test: the `close-receipt` route, the `timeoutSeconds`/`remainingSeconds`
 fields, cancelling before anything is sent (`idle`), the Web Service transport, and anything in
@@ -602,11 +616,11 @@ a browser.
 
 ### Tools (`tools/`)
 
-| Tool | Run | Catches |
-|---|---|---|
-| `check-web-wiring.py` | `python3 tools/check-web-wiring.py` | A script looks up an id `index.html` does not define; `js/api.js` calls a verb+route the server does not map (it reads `MapGroup("...")` and `Map{Get,Post,Put,Delete}("...")` string literals, so build routes from literals); an `import { x }` of a name the target does not export. |
-| `smoke-browser.mjs` | `PUPPETEER_DIR=/path node tools/smoke-browser.mjs [baseUrl]` against a running app; needs `puppeteer-core` and Chrome (`CHROME=...`) | Console error, uncaught exception, CSP violation, failed or 4xx/5xx request, fatal banner, or a section that does not show. |
-| `test-amount.mjs` | `node tools/test-amount.mjs` | Drift of `amount.js` from Core's `AmountEntry`/`AmountLimits`. It hard-codes `MAX_DIGITS = 9`. |
+| Tool                  | Run                                                                                                                                  | Catches                                                                                                                                                                                                                                                                                 |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check-web-wiring.py` | `python3 tools/check-web-wiring.py`                                                                                                  | A script looks up an id `index.html` does not define; `js/api.js` calls a verb+route the server does not map (it reads `MapGroup("...")` and `Map{Get,Post,Put,Delete}("...")` string literals, so build routes from literals); an `import { x }` of a name the target does not export. |
+| `smoke-browser.mjs`   | `PUPPETEER_DIR=/path node tools/smoke-browser.mjs [baseUrl]` against a running app; needs `puppeteer-core` and Chrome (`CHROME=...`) | Console error, uncaught exception, CSP violation, failed or 4xx/5xx request, fatal banner, or a section that does not show.                                                                                                                                                             |
+| `test-amount.mjs`     | `node tools/test-amount.mjs`                                                                                                         | Drift of `amount.js` from Core's `AmountEntry`/`AmountLimits`. It hard-codes `MAX_DIGITS = 9`.                                                                                                                                                                                          |
 
 ---
 
@@ -733,9 +747,9 @@ the connection, which is why runs live in the registry.
 - **Server date** is the default for the original-transaction date and `today` in `/api/meta`; a
   browser in another timezone can differ by a day at the boundary. Log timestamps are
   server-local with no date.
-- No USB or Bluetooth channel; those modes register but cannot run. The 12 h retention is a code
+- USB cable runs through `UsbAccessoryEcrChannel` in the process that hosts the site, so the cable has to be plugged into that computer. Windows uses the WinUSB driver. macOS and Linux use libusb. Bluetooth still cannot run. The 12 h retention is a code
   constant.
-- **The server guards a running run, not an unread unknown outcome.** While an *Outcome unknown*
+- **The server guards a running run, not an unread unknown outcome.** While an _Outcome unknown_
   result sits un-acknowledged, `POST /api/transactions` for the same terminal still returns
   `202`; the page prevents it only because the result dialog is modal.
 - **Closing the dialog is an irrevocable acknowledge**, including for an unknown outcome

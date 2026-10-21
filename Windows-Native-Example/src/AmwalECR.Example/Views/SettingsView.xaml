@@ -19,17 +19,17 @@
                        AutomationProperties.LiveSetting="Polite" />
         </Border>
 
-        <!-- Wi-Fi / LAN. -->
+        <!-- Wi-Fi. -->
         <Border Style="{StaticResource Card}" Margin="0,0,0,12">
             <StackPanel>
                 <TextBlock Style="{StaticResource TitleText}"
-                           Text="Wi&#x2011;Fi / LAN settings"
+                           Text="Wi&#x2011;Fi settings"
                            AutomationProperties.HeadingLevel="Level2" />
                 <TextBlock Style="{StaticResource CaptionText}"
                            Margin="0,4,0,12"
                            Text="Signing key for Wi&#x2011;Fi, USB cable, and Bluetooth ECR (sorted key=value HMAC)." />
 
-                <Label Content="Wi-Fi/LAN secure hash _key" Target="{Binding ElementName=WifiKeyMasked}" Style="{StaticResource FieldLabel}" />
+                <Label Content="Wi-Fi secure hash _key" Target="{Binding ElementName=WifiKeyMasked}" Style="{StaticResource FieldLabel}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -42,7 +42,7 @@
                                      ui:PasswordBoxBinding.BoundPassword="{Binding WifiSecureHashKey, Mode=TwoWay}"
                                      ui:FieldState.HasError="{Binding HasWifiKeyError}"
                                      Visibility="{Binding ShowWifiKey, Converter={StaticResource InverseBoolToVisibility}}"
-                                     AutomationProperties.Name="Wi-Fi/LAN secure hash key" />
+                                     AutomationProperties.Name="Wi-Fi secure hash key" />
                         <TextBox x:Name="WifiKeyPlain"
                                  Style="{StaticResource FieldTextBox}"
                                  FontFamily="Consolas"
@@ -50,14 +50,14 @@
                                  Text="{Binding WifiSecureHashKey, UpdateSourceTrigger=PropertyChanged}"
                                  ui:FieldState.HasError="{Binding HasWifiKeyError}"
                                  Visibility="{Binding ShowWifiKey, Converter={StaticResource BoolToVisibility}}"
-                                 AutomationProperties.Name="Wi-Fi/LAN secure hash key" />
+                                 AutomationProperties.Name="Wi-Fi secure hash key" />
                     </Grid>
                     <Button Grid.Column="1"
                             Style="{StaticResource OutlinedButton}"
                             Margin="8,0,0,0"
                             Command="{Binding ToggleWifiKeyCommand}"
                             Content="{Binding WifiKeyToggleText}"
-                            AutomationProperties.Name="Show or hide the Wi-Fi/LAN key" />
+                            AutomationProperties.Name="Show or hide the Wi-Fi key" />
                 </Grid>
                 <TextBlock Style="{StaticResource ErrorText}"
                            Text="{Binding WifiKeyError}"

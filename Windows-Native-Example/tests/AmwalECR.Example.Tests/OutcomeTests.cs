@@ -369,7 +369,7 @@ public class ResultPresenterTests
         var web = ResultPresenter.ForInquiry(Inquired(Txn()), receiptSupported: false, webService: true);
 
         Assert.False(web.OffersReceipt);
-        Assert.Contains("Wi‑Fi only", web.ReceiptNote);
+        Assert.Contains("Wi‑Fi and USB cable", web.ReceiptNote);
     }
 
     [Fact]

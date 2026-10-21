@@ -13,9 +13,9 @@ this Core path (`SelectedTerminalConfig` → `EcrSessions.Plan` → `EcrSessions
 
 | | Wi‑Fi (`ecrMode: 2`) | Web Service (`ecrMode: 4`) |
 |---|---|---|
-| Settings | *Wi‑Fi/LAN secure hash key* | Environment (SIT/UAT/PROD) + *Web Service secure hash key* |
+| Settings | *Wi‑Fi secure hash key* | Environment (SIT/UAT/PROD) + *Web Service secure hash key* |
 | Terminal form | name, serial, IP, port | name, serial, merchant ID, terminal ID |
-| Client | `EcrTerminal` / LAN session | `EcrWebServiceTerminal` / Hub session |
+| Client | `EcrTerminal` / Wi-Fi session | `EcrWebServiceTerminal` / Hub session |
 | Probe / e-receipt | Yes | No |
 | Default response timeout | 120 s | 130 s (the plan raises the 120 s default) |
 
@@ -53,22 +53,51 @@ if (!config.IsReady)
 EcrOpenedSession session = EcrSessions.Open(
     terminalSerial: terminal.SerialNumber,
     plan: config.Plan,
+    usbChannel: config.Plan.UsesUsbCable ? () => new UsbAccessoryEcrChannel() : null,
     logger: EcrLogger.From(Debug.WriteLine));
 
-// TransactionEngine.RunAsync does the same, then SaleAsync / VoidAsync / …
+// TransactionEngine.OpenSession does the same, then SaleAsync / VoidAsync / …
 ```
 
 The typed clients below (`EcrSessions.LanTerminal` / `WebServiceTerminal`) are equivalent when
 you are not using `Open` — useful when porting into your own till without the sample's engine.
+A USB cable has to go through `Open` and pass `usbChannel`, because that is the only place the
+till supplies the host side of the cable.
 
 ---
 
-## 1. Wi‑Fi / LAN — setup
+## USB cable — setup
 
-TMS: `terminalMode: 1`, `ecrMode: 2`. Same LAN as the till. Terminal shows IP:port under
+TMS: `terminalMode: 1`, `ecrMode: 1`. No IP address. The signing key is the Wi‑Fi key.
+Windows opens the device with WinUSB. macOS and Linux open it with libusb. The till is the
+USB host and asks the terminal to enter accessory mode; after that the sale, void, refund,
+inquiry, e-receipt and close receipt calls are the same as Wi‑Fi.
+
+**In the sample UI:** Terminals → paste *Wi‑Fi secure hash key* → Add terminal
+(mode USB cable) → plug the terminal into this computer → Transaction → select it.
+
+```csharp
+EcrOpenedSession OpenUsbTerminal(string serial, string wifiSecureHashKey)
+{
+    var plan = EcrSessions.Plan(
+        link: new EcrLink.UsbCable(),
+        config: new EcrConfig { SecureHashKey = wifiSecureHashKey });
+
+    return EcrSessions.Open(
+        terminalSerial: serial,
+        plan: plan,
+        usbChannel: () => new UsbAccessoryEcrChannel());
+}
+```
+
+---
+
+## 1. Wi‑Fi — setup
+
+TMS: `terminalMode: 1`, `ecrMode: 2`. Same Wi-Fi as the till. Terminal shows IP:port under
 the card logos.
 
-**In the sample UI:** Terminals → paste *Wi‑Fi/LAN secure hash key* → Add terminal
+**In the sample UI:** Terminals → paste *Wi‑Fi secure hash key* → Add terminal
 (mode Wi‑Fi, IP, port) → Transaction → select it (config card must be ready).
 
 ```csharp
@@ -102,7 +131,7 @@ EcrTerminal OpenWifiTerminal(Terminal registered, string wifiSecureHashKey)
 // var session = EcrSessions.Open(registered.SerialNumber, config.Plan, logger: …);
 ```
 
-Probe before a money-moving call (LAN only — the sample’s engine does this automatically):
+Probe before a money-moving call (Wi-Fi only — the sample’s engine does this automatically):
 
 ```csharp
 if (!await wifi.IsReachableAsync())
@@ -114,7 +143,7 @@ if (!await wifi.IsReachableAsync())
 
 ---
 
-## 2. Wi‑Fi / LAN — sale
+## 2. Wi‑Fi — sale
 
 ```csharp
 async Task WifiSaleAsync(EcrTerminal wifi, decimal amount, string orderNumber)
@@ -175,7 +204,7 @@ EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
 
 ---
 
-## 3. Wi‑Fi / LAN — void
+## 3. Wi‑Fi — void
 
 ```csharp
 async Task WifiVoidAsync(EcrTerminal wifi, string receiptNumber)
@@ -195,7 +224,7 @@ async Task WifiVoidAsync(EcrTerminal wifi, string receiptNumber)
     }
 }
 
-// Original taken on another till (LAN only)
+// Original taken on another till (Wi-Fi only)
 await wifi.VoidAsync(receiptNumber: "215", originalTerminalId: "31629");
 ```
 
@@ -210,7 +239,7 @@ EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
 
 ---
 
-## 4. Wi‑Fi / LAN — refund
+## 4. Wi‑Fi — refund
 
 ```csharp
 async Task WifiRefundAsync(
@@ -243,7 +272,7 @@ EcrReceiptClosed closed = await wifi.CloseReceiptAsync();
 
 ---
 
-## 5. Wi‑Fi / LAN — inquiry by receipt (STAN)
+## 5. Wi‑Fi — inquiry by receipt (STAN)
 
 ```csharp
 async Task WifiInquireByStanAsync(
@@ -273,7 +302,7 @@ async Task WifiInquireByStanAsync(
 
 ---
 
-## 6. Wi‑Fi / LAN — inquiry by merchant reference
+## 6. Wi‑Fi — inquiry by merchant reference
 
 ```csharp
 async Task WifiInquireByReferenceAsync(EcrTerminal wifi, string orderNumber)
@@ -293,7 +322,7 @@ In the sample UI: Inquiry → **Look up by reference** (date/receipt fields hidd
 
 ---
 
-## 7. Wi‑Fi / LAN — e-receipt
+## 7. Wi‑Fi — e-receipt
 
 ```csharp
 async Task WifiReceiptAsync(
@@ -557,7 +586,7 @@ refund; on Web Service it takes the reference from the result.
 
 ## 15. What Web Service does not support
 
-| Operation | Wi‑Fi | Web Service |
+| Operation | Wi‑Fi and USB cable | Web Service |
 |---|---|---|
 | `ReceiptAsync` / e-receipt QR | Yes | **No** — UI says so; the session returns `EcrReceipt.Unavailable` |
 | Reachability probe | Yes | **No** — `ProbeReachabilityAsync` is `null`, skipped |

@@ -47,7 +47,7 @@
                                Visibility="{Binding HasSerialError, Converter={StaticResource BoolToVisibility}}" />
                 </StackPanel>
 
-                <!-- ECR mode. USB cable and Bluetooth stay selectable, so a terminal list can match the Android one, but cannot run transactions here. -->
+                <!-- ECR mode. Bluetooth stays selectable so a terminal list can match the Android one, but cannot run transactions here. -->
                 <StackPanel Margin="0,0,0,8" x:Name="ModeGroup">
                     <TextBlock Style="{StaticResource TitleText}"
                                FontSize="14"
@@ -134,7 +134,7 @@
 
                 <TextBlock Style="{StaticResource CaptionText}"
                            Margin="2,8,0,0"
-                           Text="There is no address to enter for a USB cable: it is found when it is plugged in. The Windows SDK ships no USB channel, so this sample cannot run transactions over it."
+                           Text="There is no address to enter. Plug the terminal into this computer with a USB cable. Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. The signing key is the Wi-Fi key."
                            Visibility="{Binding IsUsbCable, Converter={StaticResource BoolToVisibility}}" />
                 <TextBlock Style="{StaticResource CaptionText}"
                            Margin="2,8,0,0"

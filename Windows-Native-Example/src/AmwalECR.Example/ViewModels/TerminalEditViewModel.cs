@@ -24,7 +24,7 @@ public sealed class ModeOptionViewModel : ObservableObject
     /// <summary>Why the mode cannot run transactions in this sample, or empty.</summary>
     public string Hint => Mode.IsSupportedInExample()
         ? ""
-        : "Not available in this sample — the Windows SDK ships no " + (Mode == EcrMode.UsbCable ? "USB channel" : "Bluetooth channel");
+        : "Not available in this sample — Bluetooth has no channel.";
 
     public bool HasHint => Hint.Length != 0;
 

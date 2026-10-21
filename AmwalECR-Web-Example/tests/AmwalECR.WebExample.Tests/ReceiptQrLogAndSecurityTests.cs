@@ -13,7 +13,10 @@ public class ReceiptTests
 
     private static object InquiryByReceipt => new
     {
-        terminalSerial = Harness.Serial, type = "Inquiry", receiptNumber = "24", originalDate = "2026-08-09",
+        terminalSerial = Harness.Serial,
+        type = "Inquiry",
+        receiptNumber = "24",
+        originalDate = "2026-08-09",
     };
 
     [Fact]
@@ -149,7 +152,7 @@ public class LogTests
         var text = log!["text"]!.GetValue<string>();
 
         Assert.Contains("Sending SALE ORDER-L", text);
-        Assert.Contains("signing key (Wi-Fi/LAN secure hash key): configured", text);
+        Assert.Contains("signing key (Wi-Fi secure hash key): configured", text);
         Assert.DoesNotContain(FakeTerminal.Key, text, StringComparison.OrdinalIgnoreCase);
         Assert.True(log["count"]!.GetValue<int>() > 5);
         Assert.Equal(500, log["capacity"]!.GetValue<int>());

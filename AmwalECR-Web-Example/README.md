@@ -35,11 +35,11 @@ a 404 and `appsettings.json` is not loaded.
 
 ## Configure it
 
-| Setting | Default | Override |
-|---|---|---|
-| `Urls` | `http://127.0.0.1:5080` (`appsettings.json`, `launchSettings.json`) | `--urls`, `ASPNETCORE_URLS` |
-| `AllowedHosts` | `127.0.0.1;localhost;[::1]` | `AllowedHosts` env or `appsettings.{Environment}.json` |
-| `DataDir` | blank = per-user app-data folder `AmwalECR-WebExample` | `--DataDir=/path`, `DataDir` env |
+| Setting        | Default                                                             | Override                                               |
+| -------------- | ------------------------------------------------------------------- | ------------------------------------------------------ |
+| `Urls`         | `http://127.0.0.1:5080` (`appsettings.json`, `launchSettings.json`) | `--urls`, `ASPNETCORE_URLS`                            |
+| `AllowedHosts` | `127.0.0.1;localhost;[::1]`                                         | `AllowedHosts` env or `appsettings.{Environment}.json` |
+| `DataDir`      | blank = per-user app-data folder `AmwalECR-WebExample`              | `--DataDir=/path`, `DataDir` env                       |
 
 The default data folder is `%LOCALAPPDATA%\AmwalECR-WebExample` on Windows,
 `~/Library/Application Support/AmwalECR-WebExample` on macOS and
@@ -48,7 +48,7 @@ The default data folder is `%LOCALAPPDATA%\AmwalECR-WebExample` on Windows,
 decrypts it). On Unix a folder the app creates is `0700`.
 
 In the UI, keys, environment and terminals are set on the **Terminals** screen, exactly as in
-WPF: a *Wi-Fi/LAN secure hash key* card, a *Web Service* card (environment `SIT`/`UAT`/`PROD` +
+WPF: a _Wi-Fi secure hash key_ card, a _Web Service_ card (environment `SIT`/`UAT`/`PROD` +
 Web Service key), and the terminal list. Terminal records hold addresses only (Wi-Fi: IP and
 port; Web Service: merchant and terminal IDs), never a key. Keys are validated when saved (even
 -length hex, at least 16 characters) and an invalid one is refused.
@@ -64,7 +64,7 @@ python3 -u ../Windows-Native-Example/tools/fake_pos_server_signed.py \
 ```
 
 Use a port outside 9100-9199 (Dart/Flutter tooling listens there). Then: **Terminals** -> paste
-the same key as the Wi-Fi/LAN key -> **Add terminal** (Wi-Fi, IP `127.0.0.1`, port `19100`) ->
+the same key as the Wi-Fi key -> **Add terminal** (Wi-Fi, IP `127.0.0.1`, port `19100`) ->
 **Transaction** -> amount -> **Start transaction**. Useful flags: `--decline 51`, `--partial`,
 `--delay 8` (then **Cancel**, or reload the page), `--drop-sale`,
 `--drop-sale --drop-first-inquiry`, `--not-found`.
@@ -98,7 +98,7 @@ Everything the [WPF sample demonstrates](../Windows-Native-Example/README.md#wha
   `/Ecr/closeReceipt` with the operation's merchant reference. Closing the dialog does not send it.
 - **One running transaction per terminal**, enforced by the server (`409`).
 - **Write-only keys.** The API never returns a stored key, not even its length: only
-  `configured: true/false` and the key's label. The page offers *Replace / Clear*, not *Show*.
+  `configured: true/false` and the key's label. The page offers _Replace / Clear_, not _Show_.
 - **The QR is drawn on the server** (`GET /api/qr`, SVG), so the page needs no library.
 - Light and dark themes and a phone-width layout.
 
@@ -110,22 +110,22 @@ JSON in, JSON out. Mutating calls (`POST`, `PUT`, `DELETE`) **must** send
 `{ "error": "..." }`. Shapes, status codes and a curl session:
 [docs/implementation.md, the API](docs/implementation.md#5-the-api).
 
-| Route | Purpose |
-|---|---|
-| `GET /api/meta` | Operations (SDK flags, per-combination field layouts), modes, environments, amount limits, today |
-| `GET/POST /api/terminals`, `PUT/DELETE /api/terminals/{serial}` | Terminals, keyed by serial |
-| `GET /api/terminals/{serial}/config` | The config card: what the SDK plan makes of the terminal, before paying |
-| `GET /api/settings`, `PUT /api/settings/environment` | Environment; never a key |
-| `PUT/DELETE /api/settings/keys/{wifi\|webService}` | Replace or clear a key (write-only) |
-| `GET/POST /api/transactions` | Un-acknowledged runs (newest first); start one (`202`, `422`, `409`) |
-| `GET /api/transactions/{id}` | Poll the state |
-| `POST /api/transactions/{id}/cancel` | Stop waiting |
-| `POST /api/transactions/{id}/inquire` | Look an unknown outcome up by its reference |
-| `POST /api/transactions/{id}/receipt` | Fetch the e-receipt of an inquiry result (Wi-Fi only) |
-| `POST /api/transactions/{id}/close-receipt` | Ask the terminal to put its receipt away |
-| `DELETE /api/transactions/{id}` | The operator has read the result (`409` while running) |
-| `GET /api/qr?text=` | `image/svg+xml` |
-| `GET/DELETE /api/log` | The last 500 SDK log lines; clear |
+| Route                                                           | Purpose                                                                                          |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `GET /api/meta`                                                 | Operations (SDK flags, per-combination field layouts), modes, environments, amount limits, today |
+| `GET/POST /api/terminals`, `PUT/DELETE /api/terminals/{serial}` | Terminals, keyed by serial                                                                       |
+| `GET /api/terminals/{serial}/config`                            | The config card: what the SDK plan makes of the terminal, before paying                          |
+| `GET /api/settings`, `PUT /api/settings/environment`            | Environment; never a key                                                                         |
+| `PUT/DELETE /api/settings/keys/{wifi\|webService}`              | Replace or clear a key (write-only)                                                              |
+| `GET/POST /api/transactions`                                    | Un-acknowledged runs (newest first); start one (`202`, `422`, `409`)                             |
+| `GET /api/transactions/{id}`                                    | Poll the state                                                                                   |
+| `POST /api/transactions/{id}/cancel`                            | Stop waiting                                                                                     |
+| `POST /api/transactions/{id}/inquire`                           | Look an unknown outcome up by its reference                                                      |
+| `POST /api/transactions/{id}/receipt`                           | Fetch the e-receipt of an inquiry result (Wi-Fi and USB cable)                                   |
+| `POST /api/transactions/{id}/close-receipt`                     | Ask the terminal to put its receipt away                                                         |
+| `DELETE /api/transactions/{id}`                                 | The operator has read the result (`409` while running)                                           |
+| `GET /api/qr?text=`                                             | `image/svg+xml`                                                                                  |
+| `GET/DELETE /api/log`                                           | The last 500 SDK log lines; clear                                                                |
 
 Finished transactions nobody acknowledged are kept for 12 hours, then dropped.
 
@@ -170,8 +170,8 @@ What each test class pins: [docs/implementation.md, tests](docs/implementation.m
 - Single operator, single process: runs and the log are in memory, a restart forgets runs (use
   **Inquire** with a reference from the log or the till), and two instances do not share the
   per-terminal guard.
-- The server guards a *running* run, not an unread unknown outcome; the page is what prevents a
+- The server guards a _running_ run, not an unread unknown outcome; the page is what prevents a
   second sale while that result is open.
 - Web Service is not exercised against a real Hub; the smoke test drives Chrome only.
-- USB cable, Bluetooth and app-to-app are not supported (register-only for the first two).
+- USB cable uses the same session as the native sample. The web process must run on the computer the cable is plugged into. Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. macOS and Linux use libusb. Bluetooth and app-to-app are not offered.
 - "Today" is the server's date.

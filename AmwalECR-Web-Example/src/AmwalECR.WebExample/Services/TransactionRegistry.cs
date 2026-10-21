@@ -288,7 +288,7 @@ public sealed class TransactionRegistry
         return new CloseReceiptOutcome.Done(snapshot, message);
     }
 
-    /// <summary>Fetches the e-receipt of an inquired transaction (Wi‑Fi only).</summary>
+    /// <summary>Fetches the e-receipt of an inquired transaction (Wi‑Fi and USB cable).</summary>
     public FollowUp RequestReceipt(string id)
     {
         TransactionState.Inquired current;

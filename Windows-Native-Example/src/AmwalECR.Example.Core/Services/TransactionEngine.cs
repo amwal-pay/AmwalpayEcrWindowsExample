@@ -10,7 +10,7 @@ namespace AmwalECR.Example.Core.Services;
 /// the answer. The transaction view-model owns the screen state and the
 /// cancellation source; this owns the flow, so it can be exercised without a UI.
 /// <para>
-/// Transport choice (LAN / Web Service) is owned by <see cref="EcrSessions.Open"/>
+/// Transport choice (Wi-Fi / Web Service) is owned by <see cref="EcrSessions.Open"/>
 /// so sale, inquiry recovery and receipt share one dispatch.
 /// </para>
 /// </summary>
@@ -39,7 +39,7 @@ public sealed class TransactionEngine
     public void LogSelectedConfig(SelectedTerminalConfig config)
     {
         var logger = LoggerFor(config);
-        var prefix = config.UsesWebService ? "[Web Service]" : "[Wi-Fi/LAN]";
+        var prefix = config.UsesWebService ? "[Web Service]" : config.Plan.UsesUsbCable ? "[USB]" : "[Wi-Fi]";
         logger.Debug($"{prefix} selected {config.Terminal.SerialNumber} ({config.Mode.Label()})");
         logger.Debug($"{prefix} SDK connection: {config.ConnectionSummary}");
         foreach (var issue in config.Issues)
@@ -197,7 +197,7 @@ public sealed class TransactionEngine
     /// </summary>
     /// <param name="terminalSerial">Selected terminal.</param>
     /// <param name="originalMerchantReference">
-    /// Required for Web Service — the sale / void / refund reference. Ignored on LAN.
+    /// Required for Web Service — the sale / void / refund reference. Ignored on Wi-Fi.
     /// </param>
     public async Task<string> CloseTerminalReceiptAsync(
         string terminalSerial,
@@ -293,9 +293,7 @@ public sealed class TransactionEngine
         EcrSessions.Open(
             terminalSerial: registered.SerialNumber,
             plan: active.Plan,
-            // The Windows SDK ships no USB channel; USB terminals never get here
-            // because SelectedTerminalConfig marks them unsupported.
-            usbChannel: null,
+            usbChannel: active.Plan.UsesUsbCable ? () => new UsbAccessoryEcrChannel() : null,
             logger: LoggerFor(active));
 
     private IEcrLogger LoggerFor(SelectedTerminalConfig config) =>

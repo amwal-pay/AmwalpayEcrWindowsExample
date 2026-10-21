@@ -40,15 +40,11 @@ public static class EcrModes
 
     /// <summary>
     /// Whether this sample can run transactions over the mode.
-    /// <para>
-    /// Narrower than the Android sample, which also drives a USB cable: the
-    /// Windows SDK ships no USB channel (it carries no native USB dependency on
-    /// purpose), and Bluetooth was never wired in either sample. Both stay
-    /// registrable so a terminal list can be kept in step with the Android one.
-    /// </para>
+    /// Bluetooth stays registrable so a terminal list can match the Android one,
+    /// and it is not a link this SDK can open.
     /// </summary>
     public static bool IsSupportedInExample(this EcrMode mode) =>
-        mode == EcrMode.Wifi || mode == EcrMode.WebService;
+        mode == EcrMode.Wifi || mode == EcrMode.WebService || mode == EcrMode.UsbCable;
 
     public static EcrMode? FromValue(int value) =>
         Enum.IsDefined(typeof(EcrMode), value) ? (EcrMode)value : null;

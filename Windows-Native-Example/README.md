@@ -6,7 +6,7 @@ read as much as run.
 
 - How it is built (layering, state machine, payment-safety rules, extension recipes):
   [docs/implementation.md](docs/implementation.md)
-- Copy-paste SDK code for Wi-Fi and Web Service: [docs/operation-examples.md](docs/operation-examples.md)
+- Copy-paste SDK code for Wi-Fi, USB cable, and Web Service: [docs/operation-examples.md](docs/operation-examples.md)
 - The ASP.NET Core front end on the same Core library: [../AmwalECR-Web-Example](../AmwalECR-Web-Example/README.md)
 
 ## Run it
@@ -24,13 +24,13 @@ or open `AmwalECR-Example.sln` in Visual Studio 2022 (17.8+) with
 
 `Directory.Build.props` selects the SDK through `EcrSdkDependency`:
 
-| Value | Resolves |
-|---|---|
-| `nuget` (default) | `AmwalPay.Ecr` `$(EcrSdkVersion)` (default `1.0.1`) from nuget.org |
-| `project` | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj`, a sibling checkout of the SDK; override with `-p:EcrSdkProjectPath=<path to AmwalPay.Ecr.csproj>` |
+| Value             | Resolves                                                                                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nuget` (default) | `AmwalPay.Ecr` `$(EcrSdkVersion)` (default `1.0.1`) from nuget.org                                                                                               |
+| `project`         | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj`, a sibling checkout of the SDK; override with `-p:EcrSdkProjectPath=<path to AmwalPay.Ecr.csproj>` |
 
-**Use `project` for now.** The samples call `CloseReceiptAsync`, which exists only in SDK 1.0.2.
-nuget.org has 1.0.0 and 1.0.1, so a default (`nuget`) build fails until 1.0.2 is published.
+**Use `project`.** The samples open a USB cable with `UsbAccessoryEcrChannel`. That type is in
+the SDK checkout and not in the published 1.0.2 package, so a default (`nuget`) build fails.
 
 ```powershell
 git clone https://github.com/amwal-pay/AmwalpayEcrWindows ..\..\AmwalECR-Windows   # next to the repo folder
@@ -55,15 +55,16 @@ there. To see it from a Mac use the Windows VM route in [tools/vm/README.md](too
 Amwal issues **two different signing secrets**, set once on the **Terminals** screen (not on the
 terminal form):
 
-| Settings card | Used for |
-|---|---|
-| Wi-Fi/LAN secure hash key | Wi-Fi terminals |
-| Web Service: environment (`SIT` / `UAT` / `PROD`) + Web Service secure hash key | Web Service terminals |
+| Settings card                                                                   | Used for                      |
+| ------------------------------------------------------------------------------- | ----------------------------- |
+| Wi-Fi secure hash key                                                     | Wi-Fi and USB cable terminals |
+| Web Service: environment (`SIT` / `UAT` / `PROD`) + Web Service secure hash key | Web Service terminals         |
 
-| Add/Edit terminal | Fields (no key) |
-|---|---|
-| Wi-Fi | name, serial, IP, port (blank = 9100) |
-| Web Service | name, serial, merchant ID, terminal ID (numeric) |
+| Add/Edit terminal | Fields (no key)                                                |
+| ----------------- | -------------------------------------------------------------- |
+| Wi-Fi             | name, serial, IP, port (blank = 9100)                          |
+| USB cable         | name, serial. Plug the terminal into this computer. No address |
+| Web Service       | name, serial, merchant ID, terminal ID (numeric)               |
 
 A key must be an even-length hex string of at least 16 characters; it is trimmed, checked with
 `EcrConfig.IsValidSecureHashKey`, saved as you type and encrypted with Windows DPAPI.
@@ -91,7 +92,7 @@ Hub; you need credentials from Amwal. In the app:
    (not the Wi-Fi key).
 2. **Add terminal** -> mode Web Service: serial, merchant ID, terminal ID.
 3. **Transaction** -> select it. The config card must read `HTTPS Web Service (JSON HMAC)` and
-   *configured*. Blockers it names include a missing or non-numeric ID and
+   _configured_. Blockers it names include a missing or non-numeric ID and
    `Web Service secure hash key is not configured`.
 4. Start a sale. The Hub is contacted only then; there is no reachability probe.
 
@@ -103,12 +104,12 @@ Hub hosts come from the SDK's environment setting. SDK checklist:
 **Operations.** Sale, void, refund and inquiry. The form follows the SDK's
 `EcrTransactionType` flags, so what is shown and what is required cannot disagree:
 
-| | Amount | Receipt number | Date | Merchant reference |
-|---|---|---|---|---|
-| Sale | yes | | | optional |
-| Void | dimmed (the terminal knows it) | yes | | |
-| Refund | yes | yes | yes | |
-| Inquiry | dimmed | yes | yes | or look up by reference |
+|         | Amount                         | Receipt number | Date | Merchant reference      |
+| ------- | ------------------------------ | -------------- | ---- | ----------------------- |
+| Sale    | yes                            |                |      | optional                |
+| Void    | dimmed (the terminal knows it) | yes            |      |                         |
+| Refund  | yes                            | yes            | yes  |                         |
+| Inquiry | dimmed                         | yes            | yes  | or look up by reference |
 
 Void, refund and inquiry also offer **Different terminal** (original taken elsewhere; its ID is
 then required; ignored on Web Service). Date defaults to today, cannot be in the future and goes
@@ -138,12 +139,12 @@ sent), and the only follow-up offered is **Inquire by reference**, never a retry
 
 If the SDK's automatic inquiry (`AutoInquireOnFailure`, Wi-Fi) finds the transaction, the result
 shows it with a note that the answer was lost but the terminal knows it. An unreachable terminal
-(the Wi-Fi probe runs first) means nothing was sent: the message says what to check and offers no
+(the probe runs first, over Wi-Fi or the USB cable) means nothing was sent: the message says what to check and offers no
 look-up.
 
 **Inquiry.** By receipt number and date, or by reference (the form label is **Original merchant
 reference**; the date and receipt fields are hidden and the inquiry's own `merchantReference` is
-left blank so the SDK mints one). The headline is the *transaction's* status: finding a declined
+left blank so the SDK mints one). The headline is the _transaction's_ status: finding a declined
 sale is a successful inquiry. A failed inquiry is a failure ("Not completed", or "Outcome
 unknown" with the reference kept for another try), never "Not found". Inquiry reads only, so the
 terminal answers it even mid-payment.
@@ -160,11 +161,9 @@ and draw it as a QR code on the PC. Web Service has no receipt operation and the
 every request and answer, with masked card numbers, never a key. Treat copied logs as
 transaction records.
 
-## Not supported
+## USB cable
 
-USB cable and Bluetooth terminals can be registered, but the config card says "*X* is not supported in this sample" and Start stays disabled. The
-Windows SDK has no USB channel or Bluetooth link, and app-to-app is not offered. The e-receipt QR
-is Wi-Fi only.
+Register the terminal as USB cable. There is no address. The signing key is the Wi-Fi key. Plug the terminal into this computer and start the sale the same way as Wi-Fi. Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. macOS and Linux use libusb. E-receipt and close receipt work on the cable. Bluetooth and app-to-app are not offered.
 
 ## Testing without a terminal
 
@@ -179,21 +178,21 @@ python tools/fake_pos_server_signed.py --key 0123456789ABCDEF0123456789ABCDEF --
 **Use a port outside 9100-9199.** Dart/Flutter tooling listens in that range on developer
 machines and can answer instead of your fake. `19100` is safe; real terminals stay on 9100.
 
-1. In the app, **Terminals**: paste the same key as the Wi-Fi/LAN key.
+1. In the app, **Terminals**: paste the same key as the Wi-Fi key.
 2. **Add terminal**: any name and serial, mode Wi-Fi, IP `127.0.0.1`, port `19100`.
 3. Transaction: key an amount, **Start transaction**.
 
-| Flag | Answers with |
-|---|---|
-| *(none)* | Approved sales, voids and refunds; inquiries find recorded transactions (or a fixed sample); receipts return a sample URL |
-| `--decline 51` | A decline with that code |
-| `--partial` | A partial approval (half of every sale) |
-| `--delay 3` | Waits first, to mimic card entry (try **Cancel**) |
-| `--not-found` | Every inquiry answers 25 *not found*; receipts refuse |
-| `--drop-sale` | Records the sale, then hangs up. The SDK's automatic inquiry finds it: the dialog shows the transaction with the *answer was lost* note |
-| `--drop-sale --drop-first-inquiry` | As above and the automatic inquiry is dropped too: **Outcome unknown**, then **Inquire by reference** finds it |
-| `--host 127.0.0.1` | Listen on loopback only (default `0.0.0.0`) |
-| a different key in the app | *"The answer was not signed with this terminal's key"*, an unknown outcome |
+| Flag                               | Answers with                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| _(none)_                           | Approved sales, voids and refunds; inquiries find recorded transactions (or a fixed sample); receipts return a sample URL               |
+| `--decline 51`                     | A decline with that code                                                                                                                |
+| `--partial`                        | A partial approval (half of every sale)                                                                                                 |
+| `--delay 3`                        | Waits first, to mimic card entry (try **Cancel**)                                                                                       |
+| `--not-found`                      | Every inquiry answers 25 _not found_; receipts refuse                                                                                   |
+| `--drop-sale`                      | Records the sale, then hangs up. The SDK's automatic inquiry finds it: the dialog shows the transaction with the _answer was lost_ note |
+| `--drop-sale --drop-first-inquiry` | As above and the automatic inquiry is dropped too: **Outcome unknown**, then **Inquire by reference** finds it                          |
+| `--host 127.0.0.1`                 | Listen on loopback only (default `0.0.0.0`)                                                                                             |
+| a different key in the app         | _"The answer was not signed with this terminal's key"_, an unknown outcome                                                              |
 
 The fake has no `CLOSE_RECEIPT` handler; check that action against a real terminal.
 

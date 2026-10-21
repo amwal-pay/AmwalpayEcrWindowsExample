@@ -49,7 +49,7 @@ public sealed class EcrExampleSettings
         set => Update(v => v.Environment = value.ToString());
     }
 
-    /// <summary>LAN signing key — Wi‑Fi (USB cable and Bluetooth share it).</summary>
+    /// <summary> signing key — Wi‑Fi (USB cable and Bluetooth share it).</summary>
     public string WifiSecureHashKey
     {
         get

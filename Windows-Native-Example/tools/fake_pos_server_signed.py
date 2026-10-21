@@ -4,7 +4,7 @@
 A copy of ../../../AmwalECR-Windows/tools/fake_pos_server.py that speaks the protocol
 the C# SDK actually requires. That script answers unsigned, in the legacy flat
 shape, without echoing the request's nonce. `EcrSessions.Plan` refuses to run a
-LAN terminal without a signing key, and a till that holds a key rejects any answer
+Wi-Fi terminal without a signing key, and a till that holds a key rejects any answer
 that is unsigned or does not echo the nonce -- so an unsigned fake can never be
 "approved" from this sample. This one:
 
@@ -26,7 +26,7 @@ Framing is unchanged: a 2-byte big-endian length, then that many bytes of UTF-8 
                                                                        # lost answer, operator must inquire
     python tools/fake_pos_server_signed.py --key <hex> --not-found
 
-Register the same key as the "Wi-Fi/LAN secure hash key" in the sample app.
+Register the same key as the "Wi-Fi secure hash key" in the sample app.
 """
 
 import argparse
@@ -328,7 +328,7 @@ class EcrServer(socketserver.ThreadingTCPServer):
 
 
 def find_lan_ip():
-    """This PC's LAN address, without a DNS lookup of the host name (which can stall for seconds)."""
+    """This PC's Wi-Fi address, without a DNS lookup of the host name (which can stall for seconds)."""
     probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         probe.connect(("10.255.255.255", 1))  # a UDP "connect" sends nothing; it only picks a route
@@ -342,7 +342,7 @@ def find_lan_ip():
 def main():
     parser = argparse.ArgumentParser(description="Fake POS ECR listener (signed)")
     parser.add_argument("--key", required=True,
-                        help="the LAN signing key, hex -- the same one entered in the app "
+                        help="the Wi-Fi signing key, hex -- the same one entered in the app "
                              "(even length, at least 16 characters)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=9100)
@@ -368,7 +368,7 @@ def main():
 
     lan_ip = find_lan_ip()
     print(f"Listening on {args.host}:{args.port} (register {lan_ip}:{args.port}, or 127.0.0.1:{args.port} on this PC)")
-    print("Signing with the key you passed; enter the same key as the Wi-Fi/LAN secure hash key in the app.")
+    print("Signing with the key you passed; enter the same key as the Wi-Fi secure hash key in the app.")
 
     with EcrServer((args.host, args.port), EcrHandler, key, args.decline_code, args.delay,
                    args.inquiry_not_found, args.partial, args.drop_sale, args.drop_first_inquiry) as server:

@@ -10,13 +10,17 @@ Try it without a real terminal
      python tools\fake_pos_server_signed.py --key 0123456789ABCDEF0123456789ABCDEF --port 19100
    (flags: --decline 51, --partial, --delay 3, --drop-sale, --not-found)
 2. In the app open Terminals (top right):
-     Wi-Fi/LAN secure hash key: 0123456789ABCDEF0123456789ABCDEF
+     Wi-Fi secure hash key: 0123456789ABCDEF0123456789ABCDEF
      Add terminal: Serial TW1234567890, Mode Wi-Fi, IP 127.0.0.1, Port 19100
 3. Back on the main screen: pick the terminal, Sale, key an amount, Start transaction.
 
-Real terminal: register its IP (shown on its idle screen), port 9100, and the Wi-Fi/LAN
+Real terminal: register its IP (shown on its idle screen), port 9100, and the Wi-Fi
 signing key configured on that terminal. Web Service terminals need Amwal credentials
 (environment, Web Service key, merchant ID, terminal ID); there is no fake for them.
+
+USB cable: add a terminal with mode USB cable. There is no IP. Plug the terminal
+into this PC and use the same Wi-Fi signing key. Windows attaches its built-in
+WinUSB driver on the first sale and asks for approval once.
 
 Good to know
 ------------

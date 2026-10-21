@@ -74,13 +74,13 @@ public static class MetaEndpoint
     // Copy from the WPF terminal editor (ModeOptionViewModel.Hint and TerminalEditWindow.xaml).
     private static string ModeHint(EcrMode mode) => mode.IsSupportedInExample()
         ? ""
-        : "Not available in this sample — the Windows SDK ships no " + (mode == EcrMode.UsbCable ? "USB channel" : "Bluetooth channel");
+        : "Not available in this sample — Bluetooth has no channel.";
 
     private static string ModeNote(EcrMode mode) => mode switch
     {
         EcrMode.UsbCable =>
-            "There is no address to enter for a USB cable: it is found when it is plugged in. " +
-            "The Windows SDK ships no USB channel, so this sample cannot run transactions over it.",
+            "There is no address to enter. Plug the terminal into this computer with a USB cable. " +
+            "Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. The signing key is the Wi-Fi key.",
         EcrMode.Bluetooth => "Bluetooth ECR cannot be exercised from this sample.",
         _ => "",
     };

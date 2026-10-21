@@ -83,7 +83,7 @@ internal static class Http
 
 /// <summary>
 /// A host, a data folder, a loopback terminal and (by default) one registered Wi‑Fi
-/// terminal with the LAN key saved — through the app's own API, as a user would.
+/// terminal with the Wi-Fi key saved — through the app's own API, as a user would.
 /// </summary>
 internal sealed class Harness : IDisposable
 {
@@ -122,7 +122,11 @@ internal sealed class Harness : IDisposable
     {
         var (status, body) = await Client.PostJson("/api/terminals", new
         {
-            name, serialNumber = serial, ecrMode = 2, ipAddress = "127.0.0.1", port = port.ToString(),
+            name,
+            serialNumber = serial,
+            ecrMode = 2,
+            ipAddress = "127.0.0.1",
+            port = port.ToString(),
         });
         Assert.True(status == HttpStatusCode.OK, body?.ToJsonString());
     }
@@ -138,7 +142,10 @@ internal sealed class Harness : IDisposable
 
     public static object Sale(string amountDigits = "1234", string? merchantReference = null, string serial = Serial) => new
     {
-        terminalSerial = serial, type = "Sale", amountDigits, merchantReference,
+        terminalSerial = serial,
+        type = "Sale",
+        amountDigits,
+        merchantReference,
     };
 
     /// <summary>Starts a transaction and returns its id.</summary>

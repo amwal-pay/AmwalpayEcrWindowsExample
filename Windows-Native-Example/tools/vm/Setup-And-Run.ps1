@@ -41,7 +41,7 @@ Write-Host "Extracted to $Target"
 
 Write-Host ""
 Write-Host "In the app: Terminals -> add a Wi-Fi terminal at ${HostIp}:9100, then set the"
-Write-Host "LAN signing key to the one prepare-on-mac.sh printed."
+Write-Host "Wi-Fi signing key to the one prepare-on-mac.sh printed."
 Write-Host ""
 
 Set-Location (Join-Path $Target "AmwalECR-Windows-Example\Windows-Native-Example")

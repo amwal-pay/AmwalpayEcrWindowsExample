@@ -17,8 +17,8 @@
     Live package: https://www.nuget.org/packages/AmwalPay.Ecr
   -->
   <PropertyGroup>
-    <EcrSdkDependency Condition="'$(EcrSdkDependency)' == ''">nuget</EcrSdkDependency>
-    <EcrSdkVersion Condition="'$(EcrSdkVersion)' == ''">1.0.1</EcrSdkVersion>
+    <EcrSdkDependency Condition="'$(EcrSdkDependency)' == ''">project</EcrSdkDependency>
+    <EcrSdkVersion Condition="'$(EcrSdkVersion)' == ''">1.0.2</EcrSdkVersion>
     <EcrSdkProjectPath Condition="'$(EcrSdkProjectPath)' == ''">$(MSBuildThisFileDirectory)..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj</EcrSdkProjectPath>
   </PropertyGroup>
 

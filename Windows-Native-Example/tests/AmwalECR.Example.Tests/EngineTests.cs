@@ -112,9 +112,15 @@ internal sealed class FakeTerminal : IDisposable
         ["message"] = "Transaction found",
         ["data"] = new JsonObject
         {
-            ["transactionId"] = "id", ["stan"] = stan, ["transactionType"] = "Purchase", ["status"] = "Approved",
-            ["amount"] = "1.234", ["transactionTime"] = "2026-08-09T16:58:16", ["cardNumber"] = "483312******1234",
-            ["canVoid"] = true, ["canRefund"] = true,
+            ["transactionId"] = "id",
+            ["stan"] = stan,
+            ["transactionType"] = "Purchase",
+            ["status"] = "Approved",
+            ["amount"] = "1.234",
+            ["transactionTime"] = "2026-08-09T16:58:16",
+            ["cardNumber"] = "483312******1234",
+            ["canVoid"] = true,
+            ["canRefund"] = true,
         },
     };
 
@@ -143,7 +149,10 @@ public class TransactionEngineTests : IDisposable
 
     private static TransactionRequest Sale(decimal amount = 1.234m, string reference = "") => new()
     {
-        Type = EcrTransactionType.Sale, TerminalSerial = "TW1", Amount = amount, MerchantReference = reference,
+        Type = EcrTransactionType.Sale,
+        TerminalSerial = "TW1",
+        Amount = amount,
+        MerchantReference = reference,
     };
 
     private static Task<TransactionState> Run(TransactionEngine engine, TransactionRequest request, List<TransactionState>? progress = null, CancellationToken ct = default) =>
@@ -205,16 +214,22 @@ public class TransactionEngineTests : IDisposable
         var state = await Run(Engine(terminal.Port, wifiKey: ""), Sale());
 
         var failed = Assert.IsType<TransactionState.Failed>(state);
-        Assert.Contains("Wi-Fi/LAN secure hash key is not configured", failed.Message);
+        Assert.Contains("Wi-Fi secure hash key is not configured", failed.Message);
         Assert.Empty(terminal.Requests);
     }
 
     [Fact]
-    public async Task A_usb_terminal_is_refused_as_unsupported()
+    public void A_usb_terminal_is_probed_on_the_cable()
     {
-        var state = await Run(Engine(0, mode: 1), Sale());
+        // The message only. Opening the cable here would switch a terminal that
+        // happens to be plugged into this machine.
+        var text = TransactionOutcomes.UnreachableMessage(
+            "USB cable", 0, "Nothing is plugged in. Connect the terminal with a USB cable.");
 
-        Assert.Contains("USB Cable is not supported in this sample", Assert.IsType<TransactionState.Failed>(state).Message);
+        Assert.Contains("USB cable", text);
+        Assert.Contains("not reachable", text);
+        Assert.Contains("USB cable mode", text);
+        Assert.DoesNotContain("same network", text);
     }
 
     [Fact]
@@ -311,7 +326,10 @@ public class TransactionEngineTests : IDisposable
         using var terminal = new FakeTerminal(_ => FakeTerminal.Found());
         var request = new TransactionRequest
         {
-            Type = EcrTransactionType.Inquiry, TerminalSerial = "TW1", ReceiptNumber = "24", TransactionDate = "20260809",
+            Type = EcrTransactionType.Inquiry,
+            TerminalSerial = "TW1",
+            ReceiptNumber = "24",
+            TransactionDate = "20260809",
         };
 
         var state = await Run(Engine(terminal.Port), request);
@@ -331,7 +349,10 @@ public class TransactionEngineTests : IDisposable
         using var terminal = new FakeTerminal(_ => FakeTerminal.Found());
         var request = new TransactionRequest
         {
-            Type = EcrTransactionType.Inquiry, TerminalSerial = "TW1", OriginalReference = "ORDER-6", MerchantReference = "",
+            Type = EcrTransactionType.Inquiry,
+            TerminalSerial = "TW1",
+            OriginalReference = "ORDER-6",
+            MerchantReference = "",
         };
 
         await Run(Engine(terminal.Port), request);
@@ -348,7 +369,11 @@ public class TransactionEngineTests : IDisposable
         await Run(engine, new TransactionRequest { Type = EcrTransactionType.Void, TerminalSerial = "TW1", ReceiptNumber = "24" });
         await Run(engine, new TransactionRequest
         {
-            Type = EcrTransactionType.Refund, TerminalSerial = "TW1", Amount = 0.5m, ReceiptNumber = "24", TransactionDate = "20260809",
+            Type = EcrTransactionType.Refund,
+            TerminalSerial = "TW1",
+            Amount = 0.5m,
+            ReceiptNumber = "24",
+            TransactionDate = "20260809",
         });
 
         Assert.Equal(new[] { "VOID", "REFUND" }, terminal.Requests.Select(r => r["messageType"]!.GetValue<string>()));
@@ -362,14 +387,19 @@ public class TransactionEngineTests : IDisposable
         using var terminal = new FakeTerminal(r => r["messageType"]!.GetValue<string>() == "RECEIPT"
             ? new JsonObject
             {
-                ["success"] = true, ["responseCode"] = "00", ["message"] = "Receipt ready",
+                ["success"] = true,
+                ["responseCode"] = "00",
+                ["message"] = "Receipt ready",
                 ["data"] = new JsonObject { ["receiptUrl"] = "https://example.invalid/r?stan=000024" },
             }
             : FakeTerminal.Found());
         var engine = Engine(terminal.Port);
         var inquired = Assert.IsType<TransactionState.Inquired>(await Run(engine, new TransactionRequest
         {
-            Type = EcrTransactionType.Inquiry, TerminalSerial = "TW1", ReceiptNumber = "24", TransactionDate = "20260101",
+            Type = EcrTransactionType.Inquiry,
+            TerminalSerial = "TW1",
+            ReceiptNumber = "24",
+            TransactionDate = "20260101",
         }));
 
         var receipt = await engine.FetchReceiptAsync(inquired, CancellationToken.None);
@@ -403,6 +433,6 @@ public class TransactionEngineTests : IDisposable
         engine.LogSelectedConfig(config);
 
         Assert.Contains(_log, l => l.Contains("selected TW1"));
-        Assert.Contains(_log, l => l.Contains("config issue: Wi-Fi/LAN secure hash key is not configured"));
+        Assert.Contains(_log, l => l.Contains("config issue: Wi-Fi secure hash key is not configured"));
     }
 }

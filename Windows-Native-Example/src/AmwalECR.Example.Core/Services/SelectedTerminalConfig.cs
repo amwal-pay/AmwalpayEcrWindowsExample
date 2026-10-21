@@ -38,10 +38,10 @@ public sealed record SelectedTerminalConfig(Terminal Terminal, EcrSessionPlan Pl
 
     public string ConnectionSummary => Plan.ConnectionSummary;
 
-    /// <summary>"TCP LAN…" / "HTTPS Web Service…", as the config card shows it.</summary>
+    /// <summary>"TCP Wi-Fi" / "HTTPS Web Service…", as the config card shows it.</summary>
     public string TransportLabel =>
         UsesWebService ? "HTTPS Web Service (JSON HMAC)"
-        : UsesLan ? "TCP LAN (sorted key=value HMAC)"
+        : UsesLan ? "TCP Wi-Fi (sorted key=value HMAC)"
         : Mode.Label();
 
     public string HashKeyStatus =>

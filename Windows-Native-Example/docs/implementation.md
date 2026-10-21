@@ -110,10 +110,10 @@ have changed; Escape on the Terminals page goes back. Dialogs are behind `IDialo
 Holds the environment (`SIT`/`UAT`/`PROD`) and **two** signing keys, because Amwal issues
 different secrets per link. Keys are not fields on `Terminal`:
 
-| Setting | `SecureHashKeyFor(mode)` |
-|---|---|
-| `WifiSecureHashKey` | `Wifi`, `UsbCable`, `Bluetooth` |
-| `WebServiceSecureHashKey` | `WebService` |
+| Setting                   | `SecureHashKeyFor(mode)`        |
+| ------------------------- | ------------------------------- |
+| `WifiSecureHashKey`       | `Wifi`, `UsbCable`, `Bluetooth` |
+| `WebServiceSecureHashKey` | `WebService`                    |
 
 - Setters trim, swap in a cloned values object under a lock, write the file and raise `Changed`
   (outside the lock). `TransactionViewModel` subscribes so the config card and Start button react
@@ -168,11 +168,11 @@ session.ProbeReachabilityAsync / SaleAsync / VoidAsync / RefundAsync / InquireAs
    lets the SDK report a malformed key as an issue.
 5. Append the app's own issue to `Plan.Issues`.
 
-The result exposes `IsReady`, `Issues`, `TransportLabel` (`TCP LAN (sorted key=value HMAC)` or
+The result exposes `IsReady`, `Issues`, `TransportLabel` (`TCP Wi-Fi (sorted key=value HMAC)` or
 `HTTPS Web Service (JSON HMAC)`), `HashKeyLabel`, `HashKeyStatus` and `ConnectionSummary`.
-Typical issues are produced by the SDK: `Wi-Fi/LAN secure hash key is not configured`,
+Typical issues are produced by the SDK: `Wi-Fi secure hash key is not configured`,
 `Secure hash key must be an even-length hex string of at least 16 characters`,
-`IP address is required for LAN ECR`, `Merchant ID must be numeric`.
+`IP address is required for Wi-Fi ECR`, `Merchant ID must be numeric`.
 
 **Wi-Fi vs Web Service at run time.** Same three calls, different link, key and plan fields.
 Web Service differs in that `ProbeReachabilityAsync` returns `null` (the engine skips the probe),
@@ -202,17 +202,17 @@ every binding.
 
 Which fields exist is decided by the SDK's flags on `EcrTransactionType`:
 
-| Type | `RequiresAmount` | `RequiresOriginalStan` | `RequiresOriginalDate` | Fields shown |
-|---|---|---|---|---|
-| Sale | yes | no | no | Amount; merchant reference (optional) |
-| Void | no | yes | no | Receipt number; Different terminal |
-| Refund | yes | yes | yes | Amount; receipt number; date; Different terminal |
-| Inquiry | no | yes | yes | Receipt number; date; Different terminal; Look up by reference |
+| Type    | `RequiresAmount` | `RequiresOriginalStan` | `RequiresOriginalDate` | Fields shown                                                   |
+| ------- | ---------------- | ---------------------- | ---------------------- | -------------------------------------------------------------- |
+| Sale    | yes              | no                     | no                     | Amount; merchant reference (optional)                          |
+| Void    | no               | yes                    | no                     | Receipt number; Different terminal                             |
+| Refund  | yes              | yes                    | yes                    | Amount; receipt number; date; Different terminal               |
+| Inquiry | no               | yes                    | yes                    | Receipt number; date; Different terminal; Look up by reference |
 
 Derived rules:
 
 - The terminal-ID field needs the switch on; a leftover ID from a hidden switch is not sent.
-- *Look up by reference* (inquiry only) hides receipt number and date and shows the **Original
+- _Look up by reference_ (inquiry only) hides receipt number and date and shows the **Original
   merchant reference** field: a reference is unique on its own, and after a lost answer there is
   no receipt number to type because it was in the answer.
 - `OriginalDate` defaults to today, is clamped to today, and goes on the wire as `yyyyMMdd`.
@@ -271,7 +271,7 @@ real socket without a window.
    by `NewReference()` (12 upper-case hex characters, the SDK's shape). It is made here so it is
    known even if the wait is cancelled: the SDK returns a reference on a result, and a cancelled
    call returns none.
-4. **Probe** (`ProbeReachabilityAsync`, Wi-Fi only). Unreachable returns `Failed` with the
+4. **Probe** (`ProbeReachabilityAsync`, Wi-Fi and USB cable). Unreachable returns `Failed` with the
    "Check:" message and **no** reference. Cancellation here returns `Idle`.
 5. `report(InProgress)`: the request is about to go out.
 6. **Execute** by type. Inquiry calls `InquireAsync` (receipt number and date) or
@@ -365,7 +365,7 @@ These are the payment-safety rules; each has a test in `OutcomeTests.cs`:
   "Not found", which would read as "it did not happen".
 - **Cancel is an unknown outcome.** `CancelledState` for a money-moving type is
   `Failed("You stopped waiting for the terminal. This does not cancel the transaction: ...",
-  reference)`. Cancelling an inquiry, or anything during the probe, is `Idle`.
+reference)`. Cancelling an inquiry, or anything during the probe, is `Idle`.
 - **Auto-inquiry.** With `AutoInquireOnFailure` (SDK default, Wi-Fi), a lost answer is followed
   by an SDK inquiry; if it finds the transaction, `FromFailed` returns `Inquired` with
   `RecoveredFromFailure: true` (the recovered request's own `MerchantReference` stays blank).
@@ -390,14 +390,14 @@ is being fetched.
 message, fields, hints, note, raw payload, optional `InquirableReference`, receipt flags). It is
 pure, so the wording is testable.
 
-| State | Headline | Notes |
-|---|---|---|
-| `Completed(Approved)` | `Approved` or `Partially approved` | Auth code (omitted for a void: the terminal returns a placeholder), card, reference. Partial: `Only 50.000 of 961.100 was approved. Collect the difference by another means.` |
-| `Completed(Declined)` | `Declined` | The terminal's own words, from the raw answer. |
-| `Inquired(Found)` | the **transaction's** status | Finding a declined sale is a successful inquiry and reads "Declined". Fields: receipt number, type, card, date/time; hints: `Already refunded`, `Can be voided`, `Can be refunded`. |
-| `Inquired(NotFound)` | `Not found` | On Web Service a note that this does not prove nothing was charged. |
-| `Failed` with a reference | `Outcome unknown` | Warning, the reference (Copy) and the one action. |
-| `Failed` without | `Not completed` | Message and note only. |
+| State                     | Headline                           | Notes                                                                                                                                                                               |
+| ------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Completed(Approved)`     | `Approved` or `Partially approved` | Auth code (omitted for a void: the terminal returns a placeholder), card, reference. Partial: `Only 50.000 of 961.100 was approved. Collect the difference by another means.`       |
+| `Completed(Declined)`     | `Declined`                         | The terminal's own words, from the raw answer.                                                                                                                                      |
+| `Inquired(Found)`         | the **transaction's** status       | Finding a declined sale is a successful inquiry and reads "Declined". Fields: receipt number, type, card, date/time; hints: `Already refunded`, `Can be voided`, `Can be refunded`. |
+| `Inquired(NotFound)`      | `Not found`                        | On Web Service a note that this does not prove nothing was charged.                                                                                                                 |
+| `Failed` with a reference | `Outcome unknown`                  | Warning, the reference (Copy) and the one action.                                                                                                                                   |
+| `Failed` without          | `Not completed`                    | Message and note only.                                                                                                                                                              |
 
 Raw JSON is pretty-printed behind "Show raw response" with a Copy button. Backend timestamps
 such as `2026-08-09T16:58:16.804271` are shown as `09 Aug 2026 16:58`.
@@ -418,13 +418,13 @@ cancellation. Wi-Fi sends `CLOSE_RECEIPT`; on Web Service the SDK posts `/Ecr/cl
 on a `Completed` result for Wi-Fi, USB or Web Service terminals, keeps the dialog open, and is
 independent of the dialog's **Close**, which only dismisses.
 
-**Receipt QR.** After an inquiry over Wi-Fi the dialog offers **QR receipt**
+**Receipt QR.** After an inquiry over Wi-Fi or USB cable the dialog offers **QR receipt**
 (`OffersReceipt` and `Inquired { Receipt: null, FetchingReceipt: false }`).
 `FetchReceiptAsync` takes the receipt number from the found transaction's `Stan` (falling back
 to the typed one) and the day from `TransactionTime` (`DayOf` -> `yyyyMMdd`, falling back to the
 typed date), re-resolves the config and calls `ReceiptAsync`. Failures become
 `EcrReceipt.Unavailable`; Cancel during the fetch yields "Receipt fetch cancelled". Web Service
-has no receipt operation, so the dialog shows "The e-receipt QR is available over Wi-Fi only."
+has no receipt operation, so the dialog shows "The e-receipt QR is available over Wi-Fi and USB cable."
 
 `QrCodeGenerator` draws the QR on the PC: QRCoder `PngByteQRCode` (managed, no `System.Drawing`),
 level M, 8 px per module, a frozen `BitmapImage`. If generation fails the URL is still shown in
@@ -441,9 +441,9 @@ SDK --Debug(msg)--> IEcrLogger --Append(tag, msg)--> LogBuffer --Changed--> LogV
 ```
 
 - `LogBuffer` keeps the last **500** lines under a lock, each stamped `HH:mm:ss.fff <tag>
-  <message>`. A broken mirror callback is swallowed so it can never break a payment.
+<message>`. A broken mirror callback is swallowed so it can never break a payment.
 - Two tags, one buffer: `Ecr` and `EcrWebService`; `TransactionEngine.LoggerFor(config)` picks by
-  transport. The app writes its own `[App]` / `[Wi-Fi/LAN]` / `[Web Service]` lines (selected
+  transport. The app writes its own `[App]` / `[Wi-Fi]` / `[Web Service]` lines (selected
   terminal and issues, a cancelled wait, an unexpected error, a failed receipt or close receipt).
 - **The key is never logged**: the SDK logs only whether a key is present. The log does contain
   requests and answers with the **masked** card number; treat copied logs as transaction records.
@@ -500,14 +500,14 @@ dotnet test tests/AmwalECR.Example.Tests -p:EcrSdkDependency=project    # 189 te
 The test project targets `net8.0`, references **Core only** (xUnit 2.9.2) and inherits the SDK
 dependency choice.
 
-| File | Pins |
-|---|---|
-| `AmountTests.cs` | `AmountLimits`, three-decimal formatting, minor units, the `AmountEntry` vectors, the digit cap |
-| `FormStateTests.cs` | fields per type, the reference swap, other-terminal switch, date default and wire format, amount errors, the request built per type, merchant-reference rules |
-| `SelectedTerminalConfigTests.cs` | readiness; missing, malformed or untrimmed key; missing address; port fallback; Web Service label, transport and numeric IDs; USB and Bluetooth "not supported"; the right key per mode |
-| `DataTests.cs` | `Terminal` and `TerminalValidator`; repository ordering, duplicates, restart, `.unreadable` copy; settings defaults, per-mode keys, encryption at rest, `LoadWarning`; `LogBuffer` |
-| `OutcomeTests.cs` | every classification in [g](#g-the-transaction-engine-state-machine-and-payment-safety-rules) and every `ResultPresenter` model |
-| `EngineTests.cs` | the whole flow against a real socket (below) |
+| File                             | Pins                                                                                                                                                                                                              |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AmountTests.cs`                 | `AmountLimits`, three-decimal formatting, minor units, the `AmountEntry` vectors, the digit cap                                                                                                                   |
+| `FormStateTests.cs`              | fields per type, the reference swap, other-terminal switch, date default and wire format, amount errors, the request built per type, merchant-reference rules                                                     |
+| `SelectedTerminalConfigTests.cs` | readiness; missing, malformed or untrimmed key; missing address; port fallback; Web Service label, transport and numeric IDs; USB cable ready on the Wi-Fi key; Bluetooth "not supported"; the right key per mode |
+| `DataTests.cs`                   | `Terminal` and `TerminalValidator`; repository ordering, duplicates, restart, `.unreadable` copy; settings defaults, per-mode keys, encryption at rest, `LoadWarning`; `LogBuffer`                                |
+| `OutcomeTests.cs`                | every classification in [g](#g-the-transaction-engine-state-machine-and-payment-safety-rules) and every `ResultPresenter` model                                                                                   |
+| `EngineTests.cs`                 | the whole flow against a real socket (below)                                                                                                                                                                      |
 
 `FakeTerminal` in `EngineTests.cs` is a `TcpListener` on loopback that speaks the real protocol (a
 2-byte big-endian length, then UTF-8 JSON), echoes the request's `nonce` and signs the answer
@@ -554,34 +554,28 @@ throws), classification in `TransactionOutcomes` if the result shape differs, wo
 unknown outcome. `Receipt` and `CloseReceipt` exist in the enum but are not in `MenuOptions`;
 they follow a result.
 
-### Add a USB channel
+### USB cable
 
-`EcrLink` is a closed hierarchy; a new *channel* under `EcrLink.UsbCable` needs no SDK change:
-`EcrSessions.Open` accepts a `Func<IEcrChannel>`. An `IEcrChannel` only moves bytes (framing
-helpers `EcrFrames.Wrap` / `ReadBodyAsync`); signing and verification stay in the SDK. Wire it:
+`TransactionEngine.OpenSession` already passes `usbChannel: () => new UsbAccessoryEcrChannel()`
+when the plan is USB cable. The same call serves the WPF app and the web app, because both
+run that engine. Windows opens the device with WinUSB. macOS and Linux open it with libusb.
+Core stays `net8.0`; the channel lives in the SDK, so the WPF project does not add a second one.
 
-1. `Core/Data/EcrMode.cs`: `IsSupportedInExample` returns true for `UsbCable` (the edit
-   dialog's hint and the config card's issue both derive from it).
-2. `TransactionEngine.OpenSession` passes `usbChannel: null` today; take a
-   `Func<IEcrChannel>?` in the constructor and pass it through.
-3. `App.xaml.cs`: supply `() => new UsbEcrChannel()`, in the WPF project if it needs a Windows
-   API (Core must stay `net8.0`).
-4. Tests with an in-memory `IEcrChannel` (see `FakeChannel.cs` in the SDK repo's tests):
-   probe failure, `EcrChannelTimeout` (must read as an unknown outcome), a lost answer.
-
-Bluetooth has no SDK link; `ToLink` maps it to a LAN link as a placeholder.
+`EcrMode.UsbCable` is supported. The edit dialog hides the address fields and the config card
+uses the Wi-Fi signing key. Bluetooth has no SDK link; `ToLink` maps it to a Wi-Fi link as a
+placeholder and the sample refuses to run it.
 
 ### Branding and storage
 
-| What | Where |
-|---|---|
-| Colours | `Themes/Colors.xaml` (brushes are referenced by key) |
-| Styles, focus and error outlines | `Themes/Styles.xaml` |
-| Icons, currency glyph | `Themes/Icons.xaml` |
-| Window title, app bar | `MainWindow.xaml`, `MainViewModel.Title` |
-| Executable name, product | `AmwalECR.Example.csproj` |
-| Currency | `Amount (OMR)` label in `TransactionView.xaml`, symbol in `ResultDialogWindow.xaml`, `AmountLimits`/`AmountEntry` for a non-three-decimal currency |
-| Data folder | `App.DataDirectory`; changing it orphans existing files |
+| What                             | Where                                                                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Colours                          | `Themes/Colors.xaml` (brushes are referenced by key)                                                                                               |
+| Styles, focus and error outlines | `Themes/Styles.xaml`                                                                                                                               |
+| Icons, currency glyph            | `Themes/Icons.xaml`                                                                                                                                |
+| Window title, app bar            | `MainWindow.xaml`, `MainViewModel.Title`                                                                                                           |
+| Executable name, product         | `AmwalECR.Example.csproj`                                                                                                                          |
+| Currency                         | `Amount (OMR)` label in `TransactionView.xaml`, symbol in `ResultDialogWindow.xaml`, `AmountLimits`/`AmountEntry` for a non-three-decimal currency |
+| Data folder                      | `App.DataDirectory`; changing it orphans existing files                                                                                            |
 
 To swap storage, implement `ISecretProtector` (machine-scope DPAPI, a key vault) and pass it in
 `App.OnStartup`; the web sample is the worked example. `TerminalRepository` and
@@ -598,8 +592,7 @@ the serial as the key, the `SaveResult` contract and "write first, then update m
   HiDPI, high-contrast) is checked by hand.
 - No UI-automation tests; Accessibility (access keys, automation names, live regions) is
   designed in but not verified with Narrator or contrast tools.
-- **USB cable and Bluetooth are not supported** (no SDK USB channel or Bluetooth link; recipe
-  above). App-to-app is not offered.
+- **Bluetooth is not supported.** USB cable is: `TransactionEngine` opens `UsbAccessoryEcrChannel`. Windows uses the WinUSB driver. macOS and Linux use libusb. App-to-app is not offered.
 - **Web Service has no fake Hub and no loopback test**; it needs the real backend. Receipts are
   not offered over it. The fake terminal has no `CLOSE_RECEIPT` handler.
 - **The amount limit is a constant** (`100000.000`); a real terminal takes it from the server.

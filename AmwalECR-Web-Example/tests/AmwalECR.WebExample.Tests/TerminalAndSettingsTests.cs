@@ -53,7 +53,13 @@ public class TerminalTests
 
         var (status, body) = await h.Client.PostJson("/api/terminals", new
         {
-            name, serialNumber = serial, ecrMode = mode, ipAddress = ip, port, terminalId, merchantId = "1",
+            name,
+            serialNumber = serial,
+            ecrMode = mode,
+            ipAddress = ip,
+            port,
+            terminalId,
+            merchantId = "1",
         });
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, status);
@@ -61,6 +67,17 @@ public class TerminalTests
         // ...and it is Core's own answer, not a second copy of the rule.
         var core = TerminalValidator.Validate(name, serial, (EcrMode)mode, ip, port, terminalId, "1");
         Assert.Equal(body["errors"]!.AsObject().Count, new[] { core.Name, core.Serial, core.Ip, core.Port, core.TerminalId, core.MerchantId }.Count(e => e != null));
+    }
+
+    [Fact]
+    public async Task A_usb_terminal_needs_only_a_name_and_serial()
+    {
+        using var h = new Harness(register: false);
+
+        var (ok, body) = await h.Client.PostJson("/api/terminals", new { name = "Cable", serialNumber = "U1", ecrMode = 1 });
+        Assert.Equal(HttpStatusCode.OK, ok);
+        Assert.Equal("USB cable", body!["connectionSummary"]!.GetValue<string>());
+        Assert.True(body["supported"]!.GetValue<bool>());
     }
 
     [Fact]
@@ -86,7 +103,7 @@ public class TerminalTests
         var (_, bt) = await h.Client.PostJson("/api/terminals", new { name = "B", serialNumber = "B1", ecrMode = 3 });
 
         Assert.Equal("USB cable", usb!["connectionSummary"]!.GetValue<string>());
-        Assert.False(usb["supported"]!.GetValue<bool>());
+        Assert.True(usb["supported"]!.GetValue<bool>());
         Assert.Equal("Bluetooth", bt!["connectionSummary"]!.GetValue<string>());
         Assert.False(bt["supported"]!.GetValue<bool>());
     }
@@ -182,7 +199,7 @@ public class SettingsTests
         Assert.Equal("SIT", body!["environment"]!.GetValue<string>());
         Assert.False(body["wifi"]!["configured"]!.GetValue<bool>());
         Assert.False(body["webService"]!["configured"]!.GetValue<bool>());
-        Assert.Equal("Wi-Fi/LAN secure hash key", body["wifi"]!["label"]!.GetValue<string>());
+        Assert.Equal("Wi-Fi secure hash key", body["wifi"]!["label"]!.GetValue<string>());
         Assert.Equal("Web Service secure hash key", body["webService"]!["label"]!.GetValue<string>());
     }
 

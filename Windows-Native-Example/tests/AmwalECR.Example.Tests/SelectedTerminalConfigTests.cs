@@ -11,12 +11,20 @@ public class SelectedTerminalConfigTests
 
     private static Terminal Wifi(string ip = "192.168.1.50", int port = 9100) => new()
     {
-        SerialNumber = "TW1", Name = "Till 1", EcrModeValue = EcrMode.Wifi.Value(), IpAddress = ip, Port = port,
+        SerialNumber = "TW1",
+        Name = "Till 1",
+        EcrModeValue = EcrMode.Wifi.Value(),
+        IpAddress = ip,
+        Port = port,
     };
 
     private static Terminal Web(string merchant = "1234", string terminal = "5678") => new()
     {
-        SerialNumber = "TW2", Name = "Till 2", EcrModeValue = EcrMode.WebService.Value(), MerchantId = merchant, TerminalId = terminal,
+        SerialNumber = "TW2",
+        Name = "Till 2",
+        EcrModeValue = EcrMode.WebService.Value(),
+        MerchantId = merchant,
+        TerminalId = terminal,
     };
 
     [Fact]
@@ -29,10 +37,10 @@ public class SelectedTerminalConfigTests
         Assert.True(config.UsesLan);
         Assert.False(config.UsesWebService);
         Assert.Equal("192.168.1.50:9100", config.ConnectionSummary);
-        Assert.Equal("Wi-Fi/LAN secure hash key", config.HashKeyLabel);
+        Assert.Equal("Wi-Fi secure hash key", config.HashKeyLabel);
         Assert.True(config.HashKeyConfigured);
         Assert.Equal("configured (32 hex chars)", config.HashKeyStatus);
-        Assert.Equal("TCP LAN (sorted key=value HMAC)", config.TransportLabel);
+        Assert.Equal("TCP Wi-Fi (sorted key=value HMAC)", config.TransportLabel);
     }
 
     [Fact]
@@ -41,7 +49,7 @@ public class SelectedTerminalConfigTests
         var config = SelectedTerminalConfig.Resolve(Wifi(), EcrEnvironment.SIT, "");
 
         Assert.False(config.IsReady);
-        Assert.Contains("Wi-Fi/LAN secure hash key is not configured", config.Issues);
+        Assert.Contains("Wi-Fi secure hash key is not configured", config.Issues);
         Assert.False(config.HashKeyConfigured);
         Assert.Contains("not configured", config.HashKeyStatus);
     }
@@ -74,7 +82,7 @@ public class SelectedTerminalConfigTests
         var config = SelectedTerminalConfig.Resolve(Wifi(ip: ""), EcrEnvironment.SIT, Key);
 
         Assert.False(config.IsReady);
-        Assert.Contains("IP address is required for LAN ECR", config.Issues);
+        Assert.Contains("IP address is required for Wi-Fi ECR", config.Issues);
     }
 
     [Fact]
@@ -113,15 +121,15 @@ public class SelectedTerminalConfigTests
     }
 
     [Fact]
-    public void Usb_cable_is_registered_but_not_supported_in_this_sample()
+    public void Usb_cable_is_ready_when_the_wifi_key_is_set()
     {
         var usb = new Terminal { SerialNumber = "TW3", Name = "Cable", EcrModeValue = EcrMode.UsbCable.Value() };
 
         var config = SelectedTerminalConfig.Resolve(usb, EcrEnvironment.SIT, Key);
 
-        Assert.False(config.IsSupported);
-        Assert.False(config.IsReady);
-        Assert.Contains("USB Cable is not supported in this sample", config.Issues);
+        Assert.True(config.IsSupported);
+        Assert.True(config.IsReady);
+        Assert.True(config.Plan.UsesUsbCable);
         Assert.Equal("USB cable", config.ConnectionSummary);
     }
 

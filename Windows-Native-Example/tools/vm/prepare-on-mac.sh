@@ -12,7 +12,7 @@ SDK="$(cd "$EXAMPLES/../AmwalECR-Windows" && pwd)" # the SDK checkout next to it
 SHARE="$HERE/.share"
 HTTP_PORT="${HTTP_PORT:-8000}"
 ECR_PORT="${ECR_PORT:-9100}"
-# 32 hex chars = a valid LAN signing key. Paste the same one into the app.
+# 32 hex chars = a valid Wi-Fi signing key. Paste the same one into the app.
 KEY="${ECR_KEY:-0123456789ABCDEF0123456789ABCDEF}"
 
 rm -rf "$SHARE" && mkdir -p "$SHARE/stage"
@@ -43,7 +43,7 @@ HTTP_PID=$!
 sleep 1
 
 echo
-echo "Fake terminal : port $ECR_PORT, LAN signing key $KEY"
+echo "Fake terminal : port $ECR_PORT, Wi-Fi signing key $KEY"
 echo "Package server: port $HTTP_PORT  ($(du -h "$SHARE/amwal-ecr.zip" | cut -f1) zip)"
 echo "This Mac's IPs: $(echo $IPS | tr '\n' ' ')"
 echo

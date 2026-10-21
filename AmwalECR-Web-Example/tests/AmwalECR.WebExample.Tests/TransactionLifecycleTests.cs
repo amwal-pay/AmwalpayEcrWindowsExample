@@ -47,7 +47,7 @@ public class TransactionLifecycleTests
         var (status, started) = await h.StartAsync(Harness.Sale());
 
         Assert.Equal(HttpStatusCode.Accepted, status);
-        // Wi-Fi keeps the LAN default; a Web Service terminal is given 130 s by the SDK.
+        // Wi-Fi keeps the default; a Web Service terminal is given 130 s by the SDK.
         Assert.Equal(120, started!["timeoutSeconds"]!.GetValue<int>());
         var remaining = started["remainingSeconds"]!.GetValue<int>();
         Assert.InRange(remaining, 0, 120);
