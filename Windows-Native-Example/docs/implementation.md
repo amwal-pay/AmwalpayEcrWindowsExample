@@ -170,7 +170,7 @@ session.ProbeReachabilityAsync / SaleAsync / VoidAsync / RefundAsync / InquireAs
 
 The result exposes `IsReady`, `Issues`, `TransportLabel` (`TCP Wi-Fi (sorted key=value HMAC)` or
 `HTTPS Web Service (JSON HMAC)`), `HashKeyLabel`, `HashKeyStatus` and `ConnectionSummary`.
-Typical issues are produced by the SDK: `Wi-Fi secure hash key is not configured`,
+Typical issues are produced by the SDK: `Wi-Fi/CABLE secure hash key is not configured`,
 `Secure hash key must be an even-length hex string of at least 16 characters`,
 `IP address is required for Wi-Fi ECR`, `Merchant ID must be numeric`.
 
@@ -556,9 +556,12 @@ they follow a result.
 
 ### USB cable
 
-`TransactionEngine.OpenSession` already passes `usbChannel: () => new UsbAccessoryEcrChannel()`
-when the plan is USB cable. The same call serves the WPF app and the web app, because both
-run that engine. Windows opens the device with WinUSB. macOS and Linux open it with libusb.
+`TransactionEngine.OpenSession` passes `usbChannel: () => new SerialEcrChannel(CablePort(registered))`
+when the plan is USB cable. `CablePort` asks Windows which COM port currently belongs to the
+saved device serial. A terminal that was saved as a COM name, such as COM3, is opened on that
+name once, and the USB serial of the device on it is stored so the next sale can follow the
+device. The same call serves the WPF app and the web app, because both run that engine.
+Windows opens the MediaTek USB VCOM port at 115200 8N1.
 Core stays `net8.0`; the channel lives in the SDK, so the WPF project does not add a second one.
 
 `EcrMode.UsbCable` is supported. The edit dialog hides the address fields and the config card
@@ -592,7 +595,7 @@ the serial as the key, the `SaveResult` contract and "write first, then update m
   HiDPI, high-contrast) is checked by hand.
 - No UI-automation tests; Accessibility (access keys, automation names, live regions) is
   designed in but not verified with Narrator or contrast tools.
-- **Bluetooth is not supported.** USB cable is: `TransactionEngine` opens `UsbAccessoryEcrChannel`. Windows uses the WinUSB driver. macOS and Linux use libusb. App-to-app is not offered.
+- **Bluetooth is not supported.** USB cable is: `TransactionEngine` opens `SerialEcrChannel` on the COM port Windows has assigned to the saved device serial (MediaTek USB VCOM, 115200 8N1). App-to-app is not offered.
 - **Web Service has no fake Hub and no loopback test**; it needs the real backend. Receipts are
   not offered over it. The fake terminal has no `CLOSE_RECEIPT` handler.
 - **The amount limit is a constant** (`100000.000`); a real terminal takes it from the server.

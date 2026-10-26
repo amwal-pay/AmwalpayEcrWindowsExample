@@ -18,9 +18,12 @@ Real terminal: register its IP (shown on its idle screen), port 9100, and the Wi
 signing key configured on that terminal. Web Service terminals need Amwal credentials
 (environment, Web Service key, merchant ID, terminal ID); there is no fake for them.
 
-USB cable: add a terminal with mode USB cable. There is no IP. Plug the terminal
-into this PC and use the same Wi-Fi signing key. Windows attaches its built-in
-WinUSB driver on the first sale and asks for approval once.
+USB cable: plug the terminal in with its virtual serial port turned on. Add a
+terminal with mode USB cable and choose the MediaTek USB VCOM device
+(115200, 8 data bits, no parity, 1 stop bit). Windows assigns the COM port
+from that device's serial number, and the number can change. Save the
+terminal again after plugging it in so the till remembers the serial.
+Use the same Wi-Fi signing key.
 
 Good to know
 ------------

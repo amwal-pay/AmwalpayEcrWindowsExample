@@ -19,7 +19,7 @@ public class ConfigCardTests
         Assert.Equal("Wi‑Fi", body["modeLabel"]!.GetValue<string>());
         Assert.Equal("TCP Wi-Fi (sorted key=value HMAC)", body["transportLabel"]!.GetValue<string>());
         Assert.Equal($"127.0.0.1:{h.Terminal.Port}", body["connectionSummary"]!.GetValue<string>());
-        Assert.Equal("Wi-Fi secure hash key", body["keyLabel"]!.GetValue<string>());
+        Assert.Equal("Wi-Fi/CABLE secure hash key", body["keyLabel"]!.GetValue<string>());
         Assert.True(body["keyConfigured"]!.GetValue<bool>());
         Assert.Equal("configured", body["keyStatus"]!.GetValue<string>()); // not even the key's length
         Assert.Empty(body["issues"]!.AsArray());
@@ -37,7 +37,7 @@ public class ConfigCardTests
         Assert.False(body!["isReady"]!.GetValue<bool>());
         Assert.False(body["keyConfigured"]!.GetValue<bool>());
         Assert.Equal("not configured — set in Settings", body["keyStatus"]!.GetValue<string>());
-        Assert.Contains("Wi-Fi secure hash key is not configured", body["issues"]!.AsArray().Select(i => i!.GetValue<string>()));
+        Assert.Contains("Wi-Fi/CABLE secure hash key is not configured", body["issues"]!.AsArray().Select(i => i!.GetValue<string>()));
     }
 
     [Fact]
@@ -167,7 +167,7 @@ public class MetaTests
         var usb = meta["modes"]!.AsArray().Single(m => m!["value"]!.GetValue<int>() == 1)!;
         Assert.True(usb["supported"]!.GetValue<bool>());
         Assert.Equal("", usb["hint"]!.GetValue<string>());
-        Assert.Contains("USB cable", usb["note"]!.GetValue<string>());
+        Assert.Contains("virtual serial port", usb["note"]!.GetValue<string>());
         Assert.Equal("0.010", meta["amount"]!["min"]!.GetValue<string>());
         Assert.Equal("100000.000", meta["amount"]!["max"]!.GetValue<string>());
         Assert.Equal(3, meta["amount"]!["fractionDigits"]!.GetValue<int>());
@@ -335,14 +335,14 @@ public class FormValidationTests
     {
         using var h = new Harness();
         await h.Client.DeleteJson("/api/settings/keys/wifi");
-        await h.Client.PostJson("/api/terminals", new { name = "U", serialNumber = "U1", ecrMode = 1 });
+        await h.Client.PostJson("/api/terminals", new { name = "U", serialNumber = "U1", ecrMode = 1, comPort = "COM8" });
 
         var (_, noKey) = await Post(h, Harness.Sale());
         var (status, usb) = await Post(h, Harness.Sale(serial: "U1"));
 
-        Assert.Contains("Wi-Fi secure hash key is not configured", noKey!["message"]!.GetValue<string>());
+        Assert.Contains("Wi-Fi/CABLE secure hash key is not configured", noKey!["message"]!.GetValue<string>());
         Assert.Equal(HttpStatusCode.UnprocessableEntity, status);
-        Assert.Contains("Wi-Fi secure hash key is not configured", usb!["message"]!.GetValue<string>());
+        Assert.Contains("Wi-Fi/CABLE secure hash key is not configured", usb!["message"]!.GetValue<string>());
         Assert.Empty(h.Terminal.Requests);
     }
 

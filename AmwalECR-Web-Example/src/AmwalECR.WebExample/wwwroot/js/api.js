@@ -40,6 +40,13 @@ export const api = {
   meta: () => request('GET', '/api/meta'),
 
   terminals: () => request('GET', '/api/terminals'),
+  serialPorts: (serial, saved) => {
+    const query = new URLSearchParams();
+    if (serial) query.set('serial', serial);
+    if (saved) query.set('saved', saved);
+    const text = query.toString();
+    return request('GET', '/api/serial-ports' + (text ? `?${text}` : ''));
+  },
   addTerminal: (form) => request('POST', '/api/terminals', form),
   saveTerminal: (serial, form) => request('PUT', `/api/terminals/${enc(serial)}`, form),
   deleteTerminal: (serial) => request('DELETE', `/api/terminals/${enc(serial)}`),

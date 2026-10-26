@@ -266,6 +266,18 @@
           </div>
         </div>
 
+        <div id="t-usb" hidden>
+          <div class="field">
+            <label for="t-com">USB device</label>
+            <div class="row">
+              <select id="t-com" aria-describedby="e-t-comPort h-t-com"></select>
+              <button id="t-com-refresh" type="button" class="outlined">Refresh</button>
+            </div>
+            <p class="error" id="e-t-comPort" hidden></p>
+            <p class="caption" id="h-t-com">Windows assigns the COM port from this device's serial number. The same terminal on another USB socket can get a different COM. This till remembers the serial and looks the COM up again when you start a sale. The line is 115200 baud, 8 data bits, no parity, 1 stop bit. Choose MediaTek USB VCOM. Refresh after you plug the cable in.</p>
+          </div>
+        </div>
+
         <div id="t-web" hidden>
           <div class="field">
             <label for="t-merchantId">Merchant ID</label>

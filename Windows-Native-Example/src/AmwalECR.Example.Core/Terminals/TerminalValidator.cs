@@ -9,10 +9,11 @@ public sealed record TerminalErrors(
     string? Ip = null,
     string? Port = null,
     string? TerminalId = null,
-    string? MerchantId = null)
+    string? MerchantId = null,
+    string? ComPort = null)
 {
     public bool Any =>
-        Name != null || Serial != null || Ip != null || Port != null || TerminalId != null || MerchantId != null;
+        Name != null || Serial != null || Ip != null || Port != null || TerminalId != null || MerchantId != null || ComPort != null;
 }
 
 /// <summary>The terminal edit form's rules, the same as the Android sample's.</summary>
@@ -32,7 +33,8 @@ public static class TerminalValidator
         string ip,
         string port,
         string terminalId,
-        string merchantId) =>
+        string merchantId,
+        string comPort = "") =>
         new(
             Name: string.IsNullOrWhiteSpace(name) ? "Enter a terminal name" : null,
             // The serial is the terminal's identity, so it is required for every mode.
@@ -52,14 +54,30 @@ public static class TerminalValidator
                 : !IsNumeric(terminalId) ? "The terminal ID must be numeric" : null,
             MerchantId: mode != EcrMode.WebService ? null
                 : string.IsNullOrWhiteSpace(merchantId) ? "Enter the merchant ID"
-                : !IsNumeric(merchantId) ? "The merchant ID must be numeric" : null);
+                : !IsNumeric(merchantId) ? "The merchant ID must be numeric" : null,
+            ComPort: mode != EcrMode.UsbCable ? null
+                : string.IsNullOrWhiteSpace(comPort) ? "Choose the USB device this cable uses"
+                : !IsPortName(comPort) ? "Choose a USB device. Windows assigns its COM port from the device serial"
+                : null);
 
     // The SDK reads both as 64-bit integers, so that is the rule here.
     private static bool IsNumeric(string value) =>
         long.TryParse(value.Trim(), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _);
 
+    private static bool IsPortName(string value)
+    {
+        var text = value.Trim();
+        if (text.Length == 0 || text.Length > 260) return false;
+        foreach (var c in text)
+        {
+            if (char.IsWhiteSpace(c) || c == '"' || c == '\'') return false;
+        }
+
+        return true;
+    }
+
     public static Terminal ToTerminal(
-        string name, string serial, EcrMode mode, string ip, string port, string terminalId, string merchantId) =>
+        string name, string serial, EcrMode mode, string ip, string port, string terminalId, string merchantId, string comPort = "") =>
         new()
         {
             SerialNumber = serial.Trim(),
@@ -69,5 +87,6 @@ public static class TerminalValidator
             Port = mode.IsIpBased() ? (int.TryParse(port, out var p) ? p : int.Parse(DefaultPort)) : 0,
             TerminalId = terminalId.Trim(),
             MerchantId = merchantId.Trim(),
+            ComPort = mode == EcrMode.UsbCable ? comPort.Trim() : "",
         };
 }

@@ -36,9 +36,12 @@ public partial class App : Application
             args.Handled = true;
         };
 
-        // The Windows equivalent of Logcat: every line the SDK logs lands here, and
-        // in the debugger's output window.
-        var log = new LogBuffer(mirror: line => Debug.WriteLine(line));
+        // The Windows equivalent of Logcat: every line the SDK logs lands in the
+        // Debug output panel, the debugger, and debug.log next to the saved terminals.
+        Directory.CreateDirectory(DataDirectory);
+        var logFile = Path.Combine(DataDirectory, "debug.log");
+        var log = new LogBuffer(mirror: line => WriteDebugLog(logFile, line));
+        log.Append("App", $"debug log {logFile}");
         var lanLogger = EcrLogger.From(message => log.Append("Ecr", message));
         var webServiceLogger = EcrLogger.From(message => log.Append("EcrWebService", message));
 
@@ -61,5 +64,29 @@ public partial class App : Application
         window.Show();
 
         if (transaction.SelectedConfig != null) engine.LogSelectedConfig(transaction.SelectedConfig);
+    }
+
+    private static readonly object LogFileGate = new();
+
+    /// <summary>
+    /// Keeps the same lines a debugger would show, in a file, so a double-clicked
+    /// exe still has a trail. A full disk must not stop a sale.
+    /// </summary>
+    private static void WriteDebugLog(string path, string line)
+    {
+        Debug.WriteLine(line);
+        try
+        {
+            lock (LogFileGate)
+            {
+                var info = new FileInfo(path);
+                if (info.Exists && info.Length > 1_000_000) File.WriteAllText(path, "");
+                File.AppendAllText(path, line + Environment.NewLine);
+            }
+        }
+        catch (Exception)
+        {
+            // Logging never decides whether a payment went through.
+        }
     }
 }

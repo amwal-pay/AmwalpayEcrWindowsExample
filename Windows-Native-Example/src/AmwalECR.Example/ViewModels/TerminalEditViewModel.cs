@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using AmwalECR.Example.Core.Data;
 using AmwalECR.Example.Core.Terminals;
+using AmwalPay.Ecr;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -62,9 +63,12 @@ public sealed partial class TerminalEditViewModel : ObservableObject
         _port = existing is { Port: > 0 } ? existing.Port.ToString() : existing == null ? TerminalValidator.DefaultPort : "";
         _terminalId = existing?.TerminalId ?? "";
         _merchantId = existing?.MerchantId ?? "";
+        _comPort = existing?.ComPort ?? "";
 
         ModeOptions = new ObservableCollection<ModeOptionViewModel>(
             EcrModes.All.Select(m => new ModeOptionViewModel(this, m)));
+        ComPorts = new ObservableCollection<SerialPortChoice>();
+        ReloadComPorts();
     }
 
     /// <summary>Raised with true once saved, false when cancelled.</summary>
@@ -75,6 +79,8 @@ public sealed partial class TerminalEditViewModel : ObservableObject
     public string Title => IsNew ? "Add terminal" : "Terminal";
 
     public ObservableCollection<ModeOptionViewModel> ModeOptions { get; }
+
+    public ObservableCollection<SerialPortChoice> ComPorts { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NameError), nameof(HasNameError))]
@@ -104,6 +110,10 @@ public sealed partial class TerminalEditViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(MerchantIdError), nameof(HasMerchantIdError))]
     private string _merchantId;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ComPortError), nameof(HasComPortError))]
+    private string _comPort;
+
     private TerminalErrors _errors = new();
     private string? _saveError;
 
@@ -127,6 +137,8 @@ public sealed partial class TerminalEditViewModel : ObservableObject
 
     public string? MerchantIdError => _errors.MerchantId;
 
+    public string? ComPortError => _errors.ComPort;
+
     public bool HasNameError => NameError != null;
 
     public bool HasSerialError => SerialError != null;
@@ -139,20 +151,23 @@ public sealed partial class TerminalEditViewModel : ObservableObject
 
     public bool HasMerchantIdError => MerchantIdError != null;
 
+    public bool HasComPortError => ComPortError != null;
+
     partial void OnModeChanged(EcrMode value)
     {
         foreach (var option in ModeOptions) option.NotifySelectionChanged();
+        if (value == EcrMode.UsbCable) ReloadComPorts();
     }
 
     [RelayCommand]
     private void Save()
     {
         _saveError = null;
-        _errors = TerminalValidator.Validate(Name, Serial, Mode, Ip, Port, TerminalId, MerchantId);
+        _errors = TerminalValidator.Validate(Name, Serial, Mode, Ip, Port, TerminalId, MerchantId, ComPort);
         NotifyErrors();
         if (_errors.Any) return;
 
-        var terminal = TerminalValidator.ToTerminal(Name, Serial, Mode, Ip, Port, TerminalId, MerchantId);
+        var terminal = TerminalValidator.ToTerminal(Name, Serial, Mode, Ip, Port, TerminalId, MerchantId, ComPort);
         switch (_repository.Save(terminal, _originalSerial))
         {
             case SaveResult.Saved:
@@ -169,6 +184,30 @@ public sealed partial class TerminalEditViewModel : ObservableObject
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(false);
 
+    partial void OnSerialChanged(string value)
+    {
+        if (Mode != EcrMode.UsbCable) return;
+        var serial = (value ?? "").Trim();
+        if (serial.Length == 0) return;
+        foreach (var port in ComPorts)
+        {
+            if (port.DeviceSerial.Length != 0 && string.Equals(port.DeviceSerial, serial, StringComparison.OrdinalIgnoreCase))
+            {
+                ComPort = port.Selection;
+                return;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private void ReloadComPorts()
+    {
+        var listed = SerialPorts.ListFor(ComPort, Serial);
+        ComPorts.Clear();
+        foreach (var port in listed.Ports) ComPorts.Add(port);
+        ComPort = listed.Selected;
+    }
+
     private void NotifyErrors()
     {
         OnPropertyChanged(nameof(NameError));
@@ -183,5 +222,7 @@ public sealed partial class TerminalEditViewModel : ObservableObject
         OnPropertyChanged(nameof(HasTerminalIdError));
         OnPropertyChanged(nameof(MerchantIdError));
         OnPropertyChanged(nameof(HasMerchantIdError));
+        OnPropertyChanged(nameof(ComPortError));
+        OnPropertyChanged(nameof(HasComPortError));
     }
 }

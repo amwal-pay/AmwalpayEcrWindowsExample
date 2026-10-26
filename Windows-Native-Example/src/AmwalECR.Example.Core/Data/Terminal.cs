@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Serialization;
+using AmwalPay.Ecr;
 
 namespace AmwalECR.Example.Core.Data;
 
@@ -28,6 +29,13 @@ public sealed record Terminal
 
     /// <summary>Backend merchant ID — required for Web Service.</summary>
     public string MerchantId { get; init; } = "";
+
+    /// <summary>
+    /// USB cable identity. A device serial when Windows reported one, otherwise
+    /// the COM name last chosen. Empty for every other mode. The COM number
+    /// itself is assigned by Plug and Play and is resolved again at sale time.
+    /// </summary>
+    public string ComPort { get; init; } = "";
 
     [JsonIgnore]
     public EcrMode Mode => EcrModes.FromValue(EcrModeValue) ?? EcrModes.Default;
@@ -63,10 +71,14 @@ public sealed record Terminal
             case EcrMode.Bluetooth:
                 return "Bluetooth";
 
-            // A registered address would be meaningless here and misleading in the
-            // list — the cable is whatever is plugged in at the time.
+            // The COM number is assigned by Windows and can change. Show the
+            // port it has now, and the device serial the till is following.
             case EcrMode.UsbCable:
-                return "USB cable";
+                if (ComPort.Length == 0) return "USB cable";
+                var live = SerialPorts.PortFor(ComPort).Port;
+                if (live.Length == 0) return ComPort;
+                if (string.Equals(live, ComPort, StringComparison.OrdinalIgnoreCase)) return live;
+                return live + " · " + ComPort;
 
             default:
                 if (IpAddress.Length != 0 && Port > 0) return $"{IpAddress}:{Port}";

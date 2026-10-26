@@ -146,6 +146,8 @@ main { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; padding: var(--gu
 .view > * + * { margin-top: 12px; }
 
 .row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.row > select { flex: 1; width: auto; min-width: 0; }
+.row > button { flex: none; }
 .row.spread { justify-content: space-between; flex-wrap: nowrap; }
 .terminals-heading { margin-top: 1.5rem; }
 

@@ -29,7 +29,7 @@ or open `AmwalECR-Example.sln` in Visual Studio 2022 (17.8+) with
 | `nuget` (default) | `AmwalPay.Ecr` `$(EcrSdkVersion)` (default `1.0.1`) from nuget.org                                                                                               |
 | `project`         | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj`, a sibling checkout of the SDK; override with `-p:EcrSdkProjectPath=<path to AmwalPay.Ecr.csproj>` |
 
-**Use `project`.** The samples open a USB cable with `UsbAccessoryEcrChannel`. That type is in
+**Use `project`.** The samples open a USB cable with `SerialEcrChannel`. That type is in
 the SDK checkout and not in the published 1.0.2 package, so a default (`nuget`) build fails.
 
 ```powershell
@@ -63,7 +63,7 @@ terminal form):
 | Add/Edit terminal | Fields (no key)                                                |
 | ----------------- | -------------------------------------------------------------- |
 | Wi-Fi             | name, serial, IP, port (blank = 9100)                          |
-| USB cable         | name, serial. Plug the terminal into this computer. No address |
+| USB cable         | name, serial, USB device (MediaTek USB VCOM, 115200 8N1). Windows assigns the COM port from the device serial |
 | Web Service       | name, serial, merchant ID, terminal ID (numeric)               |
 
 A key must be an even-length hex string of at least 16 characters; it is trimmed, checked with
@@ -163,7 +163,7 @@ transaction records.
 
 ## USB cable
 
-Register the terminal as USB cable. There is no address. The signing key is the Wi-Fi key. Plug the terminal into this computer and start the sale the same way as Wi-Fi. Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. macOS and Linux use libusb. E-receipt and close receipt work on the cable. Bluetooth and app-to-app are not offered.
+Register the terminal as USB cable and choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from that device's serial number, and the number can change when the USB socket changes. The till stores the serial and looks up the current COM port when a sale starts. The signing key is the Wi-Fi key. The terminal's virtual serial port has to be on, and the POS idle screen shows the USB serial Windows will see. E-receipt and close receipt work on the cable. Bluetooth and app-to-app are not offered.
 
 ## Testing without a terminal
 
