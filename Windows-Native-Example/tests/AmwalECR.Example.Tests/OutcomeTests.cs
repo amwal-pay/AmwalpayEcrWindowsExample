@@ -191,6 +191,16 @@ public class TransactionOutcomesTests
     }
 
     [Fact]
+    public void A_web_service_probe_failure_does_not_tell_the_cashier_to_check_wifi()
+    {
+        var text = TransactionOutcomes.UnreachableMessage("https://ecr.example", 443, "Timed out");
+
+        Assert.Contains("https://ecr.example is not reachable", text);
+        Assert.Contains("Web Service ECR", text);
+        Assert.DoesNotContain("card logos", text);
+    }
+
+    [Fact]
     public void Stopping_a_wait_never_reads_as_a_cancelled_sale()
     {
         var state = Assert.IsType<TransactionState.Failed>(TransactionEngine.CancelledState(Sale, "REF1"));
@@ -421,5 +431,32 @@ public class ResultPresenterTests
             new TransactionState.Completed(Approved(), EcrTransactionType.Sale), false)!.Headline);
         Assert.Equal("Outcome unknown", ResultPresenter.For(new TransactionState.Failed("x", "REF"), false)!.Headline);
         Assert.Equal("Approved", ResultPresenter.For(Inquired(Txn()), usesWebService: false)!.Headline);
+    }
+
+    [Fact]
+    public void A_closed_batch_is_shown_as_settled_with_its_totals()
+    {
+        var model = ResultPresenter.For(new TransactionState.Settled(new EcrSettlement.Settled(
+            MerchantReference: "SET01",
+            BatchId: "00000007",
+            Currency: "OMR",
+            StartTime: "20261020080000",
+            EndTime: "20261020130509",
+            TotalTransactions: 4,
+            NetAmount: "12.500",
+            Totals: new Dictionary<string, EcrSettlementTotal>
+            {
+                ["SALE"] = new(3, "14.750"),
+                ["REFUND"] = new(1, "2.250"),
+                ["VOID"] = new(0, "0.000"),
+                ["PRE_AUTH"] = new(0, "0.000"),
+                ["CAPTURE"] = new(0, "0.000"),
+            },
+            Raw: "{}")), usesWebService: false);
+
+        Assert.Equal("Settled", model!.Headline);
+        Assert.Equal("12.500", model.Amount);
+        Assert.Contains(model.Fields, field => field.Label == "Sale" && field.Value == "3 · 14.750");
+        Assert.Contains(model.Fields, field => field.Label == "Closed" && field.Value == "20 Oct 2026 13:05:09");
     }
 }

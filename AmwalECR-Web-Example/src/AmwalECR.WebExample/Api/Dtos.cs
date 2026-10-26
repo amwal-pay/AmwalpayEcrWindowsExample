@@ -49,7 +49,8 @@ public sealed record ConfigView(
     IReadOnlyList<string> Issues,
     bool IsReady,
     bool IsSupported,
-    bool UsesWebService)
+    bool UsesWebService,
+    bool SupportsSettlement)
 {
     public static ConfigView From(SelectedTerminalConfig c) => new(
         c.Terminal.SerialNumber,
@@ -64,7 +65,8 @@ public sealed record ConfigView(
         c.Issues,
         c.IsReady,
         c.IsSupported,
-        c.UsesWebService);
+        c.UsesWebService,
+        c.Mode.IsSupportedInExample());
 }
 
 // Settings ----------------------------------------------------------------------------
@@ -88,6 +90,9 @@ public sealed record KeyBody(string? Value);
 // Transactions ------------------------------------------------------------------------
 
 /// <summary>The transaction form as typed — validated by <see cref="TransactionFormState.Validated"/>.</summary>
+/// <summary>Manual settlement: the selected terminal, nothing else. The page confirms first.</summary>
+public sealed record SettlementBody(string? TerminalSerial);
+
 public sealed record TransactionFormBody(
     string? TerminalSerial,
     string? Type,
@@ -167,8 +172,8 @@ public sealed record TransactionView(
                         EcrReceipt.Failed f => f.Failure.Message,
                         _ => null,
                     }),
-                // Wi‑Fi and Web Service in this sample — same modes that can close a receipt.
-                CanCloseReceipt: state is TransactionState.Completed);
+                // A finished sale, or a settlement summary the terminal is still showing.
+                CanCloseReceipt: state is TransactionState.Completed or TransactionState.Settled);
         }
 
         return new TransactionView(
@@ -183,6 +188,7 @@ public sealed record TransactionView(
                 TransactionState.Completed => "completed",
                 TransactionState.Inquired => "inquired",
                 TransactionState.Failed => "failed",
+                TransactionState.Settled => "settled",
                 _ => "idle",
             },
             state.IsBusy,

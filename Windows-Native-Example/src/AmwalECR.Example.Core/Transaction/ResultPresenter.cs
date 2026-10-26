@@ -62,6 +62,7 @@ public static class ResultPresenter
         TransactionState.Completed c => ForResult(c.Result, c.Type),
         TransactionState.Inquired i => ForInquiry(i, receiptSupported: !usesWebService, webService: usesWebService),
         TransactionState.Failed f => ForFailure(f),
+        TransactionState.Settled s => ForSettlement(s.Settlement),
         _ => null,
     };
 
@@ -179,6 +180,85 @@ public static class ResultPresenter
     }
 
     /// <summary>The exchange itself failed: unreachable, timed out, malformed.</summary>
+    public static ResultDialogModel ForSettlement(EcrSettlement settlement) => settlement switch
+    {
+        EcrSettlement.Settled settled => new ResultDialogModel
+        {
+            Headline = "Settled",
+            Tone = ResultTone.Approved,
+            Amount = settled.NetAmount,
+            Fields = SettlementFields(settled),
+            RawPayload = Pretty(settled.Raw),
+        },
+        EcrSettlement.NothingToSettle nothing => new ResultDialogModel
+        {
+            Headline = "Nothing to settle",
+            Tone = ResultTone.Approved,
+            Message = nothing.Message,
+            RawPayload = Pretty(nothing.Raw),
+        },
+        EcrSettlement.NotSettled open => new ResultDialogModel
+        {
+            Headline = "Not settled",
+            Tone = ResultTone.Declined,
+            Message = open.Reason,
+            Fields = NotSettledFields(open),
+            RawPayload = open.Raw.Length != 0 ? Pretty(open.Raw) : null,
+        },
+        EcrSettlement.Failed failed => new ResultDialogModel
+        {
+            Headline = "Settlement failed",
+            Tone = ResultTone.Declined,
+            Message = failed.Failure.Message,
+        },
+        _ => new ResultDialogModel { Headline = "Settlement", Tone = ResultTone.Declined },
+    };
+
+    private static IReadOnlyList<ResultField> SettlementFields(EcrSettlement.Settled settled)
+    {
+        var fields = new List<ResultField>();
+        if (settled.BatchId.Length != 0) fields.Add(new ResultField("Batch", settled.BatchId));
+        fields.Add(new ResultField("Transactions", settled.TotalTransactions.ToString(CultureInfo.InvariantCulture)));
+        foreach (var type in new[] { "SALE", "REFUND", "VOID", "PRE_AUTH", "CAPTURE" })
+        {
+            if (!settled.Totals.TryGetValue(type, out var total)) continue;
+            fields.Add(new ResultField(SettlementTypeLabel(type), $"{total.Count} · {total.Amount}"));
+        }
+
+        var closed = SettlementTime(settled.EndTime);
+        if (closed.Length != 0) fields.Add(new ResultField("Closed", closed));
+        return fields;
+    }
+
+    private static IReadOnlyList<ResultField> NotSettledFields(EcrSettlement.NotSettled open)
+    {
+        var fields = new List<ResultField>();
+        if (open.Status.Length != 0) fields.Add(new ResultField("Status", open.Status));
+        if (open.ResponseCode.Length != 0) fields.Add(new ResultField("Response code", open.ResponseCode));
+        if (open.UploadedTransactions is { } uploaded)
+        {
+            fields.Add(new ResultField("Uploaded", uploaded.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        return fields;
+    }
+
+    private static string SettlementTypeLabel(string type) => type switch
+    {
+        "SALE" => "Sale",
+        "REFUND" => "Refund",
+        "VOID" => "Void",
+        "PRE_AUTH" => "Pre-auth",
+        "CAPTURE" => "Capture",
+        _ => type,
+    };
+
+    /// <summary>The terminal stamps a settlement as <c>yyyyMMddHHmmss</c>.</summary>
+    private static string SettlementTime(string value) =>
+        DateTime.TryParseExact(value, "yyyyMMddHHmmss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? parsed.ToString("dd MMM yyyy HH:mm:ss", CultureInfo.InvariantCulture)
+            : value;
+
     public static ResultDialogModel ForFailure(TransactionState.Failed failed) =>
         new()
         {

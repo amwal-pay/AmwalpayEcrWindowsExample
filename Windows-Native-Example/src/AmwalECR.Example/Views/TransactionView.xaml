@@ -178,6 +178,18 @@
                         Command="{Binding SubmitCommand}"
                         IsEnabled="{Binding CanStart}"
                         IsDefault="True" />
+                <Button Style="{StaticResource OutlinedButton}"
+                        Content="Manual settlement"
+                        Command="{Binding SettleCommand}"
+                        Margin="0,8,0,0"
+                        IsEnabled="{Binding CanSettle}"
+                        Visibility="{Binding ShowsSettlement, Converter={StaticResource BoolToVisibility}}" />
+                <Button Style="{StaticResource OutlinedButton}"
+                        Content="Check reachability"
+                        Command="{Binding CheckReachabilityCommand}"
+                        Margin="0,8,0,0"
+                        IsEnabled="{Binding CanCheckReachability}"
+                        Visibility="{Binding ShowsReachability, Converter={StaticResource BoolToVisibility}}" />
             </StackPanel>
 
             <!--

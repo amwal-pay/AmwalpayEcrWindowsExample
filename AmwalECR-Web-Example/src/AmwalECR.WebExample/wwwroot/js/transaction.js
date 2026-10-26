@@ -14,7 +14,7 @@ const POLL_MS = 500;
  * A transaction runs on the server, not in the request, so this page only starts it and
  * then watches it. Closing the tab does not stop a payment.
  */
-export function initTransaction({ meta, onFinished }) {
+export function initTransaction({ meta, onFinished, confirm }) {
   const els = {
     form: $('#txn-form'),
     fields: $('#txn-fields'),
@@ -32,6 +32,9 @@ export function initTransaction({ meta, onFinished }) {
     noTerminals: $('#no-terminals'),
     message: $('#form-message'),
     start: $('#btn-start'),
+    settle: $('#btn-settle'),
+    reach: $('#btn-reach'),
+    reachStatus: $('#reach-status'),
     busy: $('#busy'),
     busyStatus: $('#busy-status'),
     busyNote: $('#busy-note'),
@@ -238,13 +241,22 @@ export function initTransaction({ meta, onFinished }) {
       const issues = $('#cfg-issues');
       issues.replaceChildren(...config.issues.map((issue) => h('li', {}, issue)));
       show(issues, config.issues.length !== 0);
-
     }
+    show(els.settle, config?.supportsSettlement === true);
+    show(els.reach, config?.usesWebService === true);
     els.start.disabled = !canStart();
+    els.settle.disabled = !canSettle();
+    els.reach.disabled = !canCheckReachability();
   }
 
   // Only a ready plan may start: the operator sees what is missing before paying.
   const canStart = () => !starting && !(run?.busy) && config?.isReady === true;
+
+  // Wi-Fi, USB cable, and Web Service. The close starts as soon as the request arrives.
+  const canSettle = () => canStart() && config?.supportsSettlement === true;
+
+  let checkingReach = false;
+  const canCheckReachability = () => canStart() && config?.usesWebService === true && !checkingReach;
 
   // Starting ---------------------------------------------------------------------------------
 
@@ -262,6 +274,50 @@ export function initTransaction({ meta, onFinished }) {
     } finally {
       starting = false;
       els.start.disabled = !canStart();
+      els.settle.disabled = !canSettle();
+      els.reach.disabled = !canCheckReachability();
+    }
+  });
+
+  els.settle.addEventListener('click', async () => {
+    if (!canSettle()) return;
+    const yes = await confirm({
+      title: 'Manual settlement',
+      message: 'It closes the current batch and prints the settlement receipt.',
+      action: 'Settle',
+    });
+    if (!yes) return;
+
+    starting = true;
+    els.start.disabled = true;
+    els.settle.disabled = true;
+    setMessage('');
+    try {
+      adopt(await api.settle(selectedSerial));
+    } catch (error) {
+      handleStartError(error);
+    } finally {
+      starting = false;
+      els.start.disabled = !canStart();
+      els.settle.disabled = !canSettle();
+      els.reach.disabled = !canCheckReachability();
+    }
+  });
+
+  els.reach.addEventListener('click', async () => {
+    if (!canCheckReachability()) return;
+    checkingReach = true;
+    els.reach.disabled = true;
+    show(els.reachStatus, true);
+    setText(els.reachStatus, 'Checking reachability…');
+    try {
+      const result = await api.reachability(selectedSerial);
+      setText(els.reachStatus, result.message);
+    } catch (error) {
+      setText(els.reachStatus, error instanceof ApiError ? error.message : 'Could not check reachability');
+    } finally {
+      checkingReach = false;
+      els.reach.disabled = !canCheckReachability();
     }
   });
 
@@ -334,6 +390,8 @@ export function initTransaction({ meta, onFinished }) {
 
     // The form is disabled as a whole while a transaction runs.
     els.fields.disabled = busy;
+    els.settle.disabled = !canSettle();
+    els.reach.disabled = !canCheckReachability();
     show(els.busy, busy);
     if (busy) {
       setText(els.busyStatus, run.statusText);

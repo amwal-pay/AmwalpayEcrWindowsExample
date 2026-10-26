@@ -30,6 +30,14 @@ public sealed class DialogService : IDialogService
             MessageBoxImage.Warning,
             MessageBoxResult.No) == MessageBoxResult.Yes;
 
+    public void Alert(string title, string message) =>
+        MessageBox.Show(
+            Owner() ?? Application.Current.MainWindow,
+            message,
+            title,
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+
     private static Window? Owner() =>
         Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive) ?? Application.Current.MainWindow;
 }

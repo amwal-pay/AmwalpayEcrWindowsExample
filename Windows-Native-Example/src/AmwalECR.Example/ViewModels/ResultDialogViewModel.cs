@@ -122,7 +122,7 @@ public sealed partial class ResultDialogViewModel : ObservableObject
     /// </summary>
     public bool ShowCloseReceipt =>
         !CloseReceiptBusy
-        && _transaction.State is TransactionState.Completed
+        && _transaction.State is TransactionState.Completed or TransactionState.Settled
         && _transaction.CanCloseTerminalReceipt();
 
     private ResultDialogModel? Build() =>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using AmwalECR.Example.Core.Data;
 using AmwalECR.Example.Core.Transaction;
 using AmwalECR.WebExample.Hosting;
 using AmwalECR.WebExample.Services;
@@ -21,6 +22,20 @@ public static class TransactionEndpoints
             Results.Ok(new { transactions = registry.Pending().Select(TransactionView.From) }));
 
         group.MapPost("", (TransactionFormBody body, EcrApp ecr, TransactionRegistry registry) => Start(body, ecr, registry));
+
+        group.MapPost("/settlement", (SettlementBody body, EcrApp ecr, TransactionRegistry registry) =>
+            Settle(body, ecr, registry));
+
+        group.MapPost("/reachability", async (SettlementBody body, EcrApp ecr) =>
+        {
+            if (body.TerminalSerial is not { Length: > 0 } serial)
+            {
+                return Fields(("terminal", "Choose a POS terminal"));
+            }
+
+            var check = await ecr.Engine.CheckWebServiceReachabilityAsync(serial);
+            return Results.Ok(new { check.Reachable, check.Message });
+        });
 
         group.MapGet("/{id}", (string id, TransactionRegistry registry) =>
             registry.Find(id) is { } run ? Results.Ok(TransactionView.From(run)) : NotFound());
@@ -89,6 +104,44 @@ public static class TransactionEndpoints
 
         return registry.Start(
             request,
+            config.UsesWebService,
+            Math.Max(1, (int)config.EcrConfig.ResponseTimeout.TotalSeconds)) switch
+        {
+            StartResult.Started started => Accepted(started.Run),
+            StartResult.Busy busy => Results.Conflict(new ErrorBody("A transaction is already running on this terminal", busy.ExistingId)),
+            _ => throw new InvalidOperationException(),
+        };
+    }
+
+    private static IResult Settle(SettlementBody body, EcrApp ecr, TransactionRegistry registry)
+    {
+        var terminal = body.TerminalSerial is { Length: > 0 } serial ? ecr.Terminals.FindBySerial(serial) : null;
+        if (terminal == null)
+        {
+            return Fields(("terminal", body.TerminalSerial is { Length: > 0 } gone
+                ? $"Terminal {gone} is no longer registered"
+                : "Choose a POS terminal"));
+        }
+
+        var config = ecr.Engine.ResolveConfig(terminal);
+        if (!config.Mode.IsSupportedInExample())
+        {
+            return Results.UnprocessableEntity(new FieldErrors(
+                new Dictionary<string, string>(),
+                "Settlement is not available for this terminal mode"));
+        }
+
+        if (!config.IsReady)
+        {
+            return Results.UnprocessableEntity(new FieldErrors(new Dictionary<string, string>(), string.Join("\n", config.Issues)));
+        }
+
+        return registry.Start(
+            new TransactionRequest
+            {
+                Type = EcrTransactionType.Settlement,
+                TerminalSerial = terminal.SerialNumber,
+            },
             config.UsesWebService,
             Math.Max(1, (int)config.EcrConfig.ResponseTimeout.TotalSeconds)) switch
         {

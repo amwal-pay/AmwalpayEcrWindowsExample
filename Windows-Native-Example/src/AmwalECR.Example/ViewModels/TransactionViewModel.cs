@@ -1,6 +1,7 @@
 using AmwalECR.Example.Core.Data;
 using AmwalECR.Example.Core.Services;
 using AmwalECR.Example.Core.Transaction;
+using AmwalECR.Example.Services;
 using AmwalPay.Ecr;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -20,6 +21,7 @@ public sealed partial class TransactionViewModel : ObservableObject
     private readonly TerminalRepository _repository;
     private readonly EcrExampleSettings _settings;
     private readonly TransactionEngine _engine;
+    private readonly IDialogService _dialogs;
 
     private string? _selectedSerial;
     private CancellationTokenSource? _cts;
@@ -28,11 +30,13 @@ public sealed partial class TransactionViewModel : ObservableObject
     public TransactionViewModel(
         TerminalRepository repository,
         EcrExampleSettings settings,
-        TransactionEngine engine)
+        TransactionEngine engine,
+        IDialogService dialogs)
     {
         _repository = repository;
         _settings = settings;
         _engine = engine;
+        _dialogs = dialogs;
         Form = new TransactionFormViewModel();
 
         _terminals = repository.GetAll();
@@ -61,6 +65,8 @@ public sealed partial class TransactionViewModel : ObservableObject
         nameof(IsChecking),
         nameof(IsInProgress),
         nameof(CanStart),
+        nameof(CanSettle),
+        nameof(CanCheckReachability),
         nameof(CanCancel),
         nameof(StatusText))]
     private TransactionState _state = new TransactionState.Idle();
@@ -94,6 +100,23 @@ public sealed partial class TransactionViewModel : ObservableObject
 
     /// <summary>Only a ready plan may start: the operator sees what is missing before paying.</summary>
     public bool CanStart => !State.IsBusy && SelectedConfig?.IsReady == true;
+
+    /// <summary>Wi-Fi, USB cable, and Web Service can close a batch.</summary>
+    public bool ShowsSettlement =>
+        SelectedConfig != null && SelectedConfig.Mode.IsSupportedInExample();
+
+    /// <summary>The Manual settlement button: ready, idle, and a supported terminal.</summary>
+    public bool CanSettle => ShowsSettlement && !State.IsBusy && SelectedConfig?.IsReady == true;
+
+    /// <summary>Web Service only. The check is a button, not a step before a sale.</summary>
+    public bool ShowsReachability => SelectedConfig?.UsesWebService == true;
+
+    public bool CanCheckReachability =>
+        ShowsReachability && !CheckingReachability && !State.IsBusy && SelectedConfig?.IsReady == true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCheckReachability))]
+    private bool _checkingReachability;
 
     /// <summary>Terminal picked in the dropdown; bound by serial so a refreshed list keeps the selection.</summary>
     public string? SelectedSerial
@@ -135,11 +158,19 @@ public sealed partial class TransactionViewModel : ObservableObject
     {
         SelectedConfig = ResolveSelected();
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanSettle));
+        OnPropertyChanged(nameof(ShowsSettlement));
+        OnPropertyChanged(nameof(ShowsReachability));
+        OnPropertyChanged(nameof(CanCheckReachability));
     }
 
     partial void OnSelectedConfigChanged(SelectedTerminalConfig? value)
     {
         OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanSettle));
+        OnPropertyChanged(nameof(ShowsSettlement));
+        OnPropertyChanged(nameof(ShowsReachability));
+        OnPropertyChanged(nameof(CanCheckReachability));
     }
 
     /// <summary>The Start button: validate, then run.</summary>
@@ -152,6 +183,50 @@ public sealed partial class TransactionViewModel : ObservableObject
 
         var request = Form.Validate(serial);
         if (request != null) Start(request);
+    }
+
+    /// <summary>
+    /// Manual settlement, as the simulator offers it: confirm first, because the
+    /// terminal closes the batch as soon as the message arrives.
+    /// </summary>
+    [RelayCommand]
+    private void Settle()
+    {
+        if (!CanSettle) return;
+        var serial = SelectedConfig?.Terminal.SerialNumber;
+        if (serial == null) return;
+        if (!_dialogs.Confirm(
+                "Manual settlement",
+                "It closes the current batch and prints the settlement receipt."))
+        {
+            return;
+        }
+
+        Start(new TransactionRequest
+        {
+            Type = EcrTransactionType.Settlement,
+            TerminalSerial = serial,
+        });
+    }
+
+    /// <summary>Posts /Ecr/CheckReachability. Does not start a transaction.</summary>
+    [RelayCommand]
+    private async Task CheckReachability()
+    {
+        if (!CanCheckReachability) return;
+        var serial = SelectedConfig?.Terminal.SerialNumber;
+        if (serial == null) return;
+
+        CheckingReachability = true;
+        try
+        {
+            var message = await _engine.CheckWebServiceReachabilityAsync(serial);
+            _dialogs.Alert("Check reachability", message.Message);
+        }
+        finally
+        {
+            CheckingReachability = false;
+        }
     }
 
     public void Start(TransactionRequest request)

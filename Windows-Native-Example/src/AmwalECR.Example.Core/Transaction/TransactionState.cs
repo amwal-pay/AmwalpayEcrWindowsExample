@@ -63,10 +63,16 @@ public abstract record TransactionState
         string? InquirableReference = null,
         string? Note = null) : TransactionState;
 
+    /// <summary>
+    /// A settlement was answered. An exchange that never completed is
+    /// <see cref="Failed"/> instead, so the cashier can try again.
+    /// </summary>
+    public sealed record Settled(EcrSettlement Settlement) : TransactionState;
+
     public bool IsBusy => this is Checking or InProgress;
 
     /// <summary>A state the operator has to acknowledge before doing anything else.</summary>
-    public bool IsResult => this is Completed or Inquired or Failed;
+    public bool IsResult => this is Completed or Inquired or Failed or Settled;
 }
 
 /// <summary>

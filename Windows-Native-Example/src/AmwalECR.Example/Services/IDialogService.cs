@@ -11,9 +11,12 @@ public interface IDialogService
     /// <summary>Shows a transaction result modally; returns when it is closed.</summary>
     void ShowResult(ResultDialogViewModel viewModel);
 
-    /// <summary>A yes/no question, defaulting to no.</summary>
-    bool Confirm(string title, string message);
-}
+        /// <summary>A yes/no question, defaulting to no.</summary>
+        bool Confirm(string title, string message);
+
+        /// <summary>A message the operator only has to read.</summary>
+        void Alert(string title, string message);
+    }
 
 public interface IClipboardService
 {

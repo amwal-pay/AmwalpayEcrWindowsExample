@@ -43,7 +43,7 @@ async function main() {
   }
 
   const log = initLog();
-  const transaction = initTransaction({ meta, onFinished: log.refresh });
+  const transaction = initTransaction({ meta, onFinished: log.refresh, confirm });
   const terminals = initTerminals({ meta, confirm });
   const settings = initSettings({ meta, confirm });
   const screens = { transaction, terminals };
