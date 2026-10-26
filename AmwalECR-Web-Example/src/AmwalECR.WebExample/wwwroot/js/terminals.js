@@ -19,8 +19,9 @@ export function initTerminals({ meta, confirm }) {
     port: $('#t-port'),
     merchantId: $('#t-merchantId'),
     terminalId: $('#t-terminalId'),
+    comPort: $('#t-com'),
   };
-  const errorKeys = ['name', 'serial', 'mode', 'ip', 'port', 'merchantId', 'terminalId'];
+  const errorKeys = ['name', 'serial', 'mode', 'ip', 'port', 'merchantId', 'terminalId', 'comPort'];
   const modes = new Map(meta.modes.map((m) => [m.value, m]));
 
   let originalSerial = null;
@@ -89,7 +90,47 @@ export function initTerminals({ meta, confirm }) {
     for (const radio of modeGroup.querySelectorAll('input')) radio.checked = Number(radio.value) === value;
     show($('#t-wifi'), m.ipBased);
     show($('#t-web'), value === 4);
+    show($('#t-usb'), value === 1);
     setText($('#t-note'), m.note);
+    if (value === 1) loadPorts(inputs.comPort.value);
+  }
+
+  let portsRequest = 0;
+  const portValue = (p) => p.selection || p.deviceSerial || p.name;
+
+  function selectPortForSerial(serial) {
+    const typed = (serial ?? '').trim().toLowerCase();
+    if (!typed) return false;
+    const option = [...inputs.comPort.options].find((o) => (o.getAttribute('data-serial') || '').toLowerCase() === typed);
+    if (!option) return false;
+    inputs.comPort.value = option.value;
+    return true;
+  }
+
+  async function loadPorts(saved) {
+    const request = ++portsRequest;
+    const asked = saved || '';
+    // Drop whatever the combo was showing. The answer below is the live list.
+    inputs.comPort.replaceChildren();
+    try {
+      const data = await api.serialPorts(inputs.serial.value.trim(), asked);
+      if (request !== portsRequest || mode !== 1) return;
+      const now = inputs.comPort.value || asked;
+      if (now !== asked) {
+        loadPorts(now);
+        return;
+      }
+      const ports = data.ports ?? [];
+      inputs.comPort.replaceChildren(...ports.map((p) => h('option', {
+        value: portValue(p),
+        'data-serial': p.deviceSerial || null,
+        'data-port': p.name || null,
+      }, p.label || p.name)));
+      inputs.comPort.value = data.selected || '';
+    } catch {
+      if (request !== portsRequest) return;
+      inputs.comPort.replaceChildren();
+    }
   }
 
   function setErrors(errors) {
@@ -111,6 +152,7 @@ export function initTerminals({ meta, confirm }) {
     inputs.port.value = existing ? (existing.port > 0 ? String(existing.port) : '') : String(meta.defaultPort);
     inputs.merchantId.value = existing?.merchantId ?? '';
     inputs.terminalId.value = existing?.terminalId ?? '';
+    inputs.comPort.replaceChildren();
     setMode(existing?.ecrMode ?? meta.modes.find((m) => m.ipBased).value);
     setErrors({});
     dialog.showModal();
@@ -119,10 +161,12 @@ export function initTerminals({ meta, confirm }) {
 
   $('#btn-add-terminal').addEventListener('click', (e) => openEditor(null, e.currentTarget));
   $('#t-cancel').addEventListener('click', () => dialog.close());
+  $('#t-com-refresh').addEventListener('click', () => loadPorts(inputs.comPort.value));
 
   // A field being edited loses its own message.
   for (const [key, input] of Object.entries(inputs)) {
     input.addEventListener('input', () => {
+      if (key === 'serial' && mode === 1) selectPortForSerial(input.value);
       if ($(`#e-t-${key}`).hidden) return;
       setText($(`#e-t-${key}`), '');
       input.setAttribute('aria-invalid', 'false');
@@ -139,6 +183,7 @@ export function initTerminals({ meta, confirm }) {
       port: inputs.port.value,
       terminalId: inputs.terminalId.value,
       merchantId: inputs.merchantId.value,
+      comPort: mode === 1 ? inputs.comPort.value : '',
     };
 
     $('#t-save').disabled = true;
@@ -154,7 +199,7 @@ export function initTerminals({ meta, confirm }) {
         return;
       }
       setErrors(error.fields);
-      const first = ['name', 'serial', 'ip', 'port', 'merchantId', 'terminalId'].find((k) => error.fields[k] && !inputs[k].closest('[hidden]'));
+      const first = ['name', 'serial', 'ip', 'port', 'merchantId', 'terminalId', 'comPort'].find((k) => error.fields[k] && !inputs[k].closest('[hidden]'));
       if (first) inputs[first].focus();
       announce(Object.values(error.fields)[0] ?? 'The terminal could not be saved');
     } finally {

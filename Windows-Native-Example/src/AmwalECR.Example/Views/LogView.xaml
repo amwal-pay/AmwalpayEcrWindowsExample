@@ -22,7 +22,7 @@
                 <TextBlock Grid.Row="0"
                            Style="{StaticResource CaptionText}"
                            Margin="0,0,0,6"
-                           Text="Requests and responses, including the masked card number: treat what you copy from here as transaction records." />
+                           Text="Requests and responses, including the masked card number: treat what you copy from here as transaction records. The same lines are written to %APPDATA%\AmwalECR-Example\debug.log." />
 
                 <TextBox x:Name="LogBox"
                          Grid.Row="1"

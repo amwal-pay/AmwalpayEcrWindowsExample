@@ -37,7 +37,7 @@ public class SelectedTerminalConfigTests
         Assert.True(config.UsesLan);
         Assert.False(config.UsesWebService);
         Assert.Equal("192.168.1.50:9100", config.ConnectionSummary);
-        Assert.Equal("Wi-Fi secure hash key", config.HashKeyLabel);
+        Assert.Equal("Wi-Fi/CABLE secure hash key", config.HashKeyLabel);
         Assert.True(config.HashKeyConfigured);
         Assert.Equal("configured (32 hex chars)", config.HashKeyStatus);
         Assert.Equal("TCP Wi-Fi (sorted key=value HMAC)", config.TransportLabel);
@@ -49,7 +49,7 @@ public class SelectedTerminalConfigTests
         var config = SelectedTerminalConfig.Resolve(Wifi(), EcrEnvironment.SIT, "");
 
         Assert.False(config.IsReady);
-        Assert.Contains("Wi-Fi secure hash key is not configured", config.Issues);
+        Assert.Contains("Wi-Fi/CABLE secure hash key is not configured", config.Issues);
         Assert.False(config.HashKeyConfigured);
         Assert.Contains("not configured", config.HashKeyStatus);
     }
@@ -123,14 +123,20 @@ public class SelectedTerminalConfigTests
     [Fact]
     public void Usb_cable_is_ready_when_the_wifi_key_is_set()
     {
-        var usb = new Terminal { SerialNumber = "TW3", Name = "Cable", EcrModeValue = EcrMode.UsbCable.Value() };
+        var usb = new Terminal { SerialNumber = "TW3", Name = "Cable", EcrModeValue = EcrMode.UsbCable.Value(), ComPort = "COM8" };
 
         var config = SelectedTerminalConfig.Resolve(usb, EcrEnvironment.SIT, Key);
 
         Assert.True(config.IsSupported);
         Assert.True(config.IsReady);
         Assert.True(config.Plan.UsesUsbCable);
-        Assert.Equal("USB cable", config.ConnectionSummary);
+        Assert.Equal("COM8", config.ConnectionSummary);
+
+        var unplugged = SelectedTerminalConfig.Resolve(
+            new Terminal { SerialNumber = "TW3", Name = "Cable", EcrModeValue = EcrMode.UsbCable.Value() },
+            EcrEnvironment.SIT, Key);
+        Assert.False(unplugged.IsReady);
+        Assert.Contains("Choose the USB device this cable uses", unplugged.Issues);
     }
 
     [Fact]

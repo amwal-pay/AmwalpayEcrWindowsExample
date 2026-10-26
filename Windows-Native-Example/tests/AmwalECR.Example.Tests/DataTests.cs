@@ -78,8 +78,9 @@ public class TerminalValidatorTests
 {
     private static TerminalErrors Check(
         string name = "Till", string serial = "TW1", EcrMode mode = EcrMode.Wifi,
-        string ip = "192.168.1.50", string port = "9100", string terminalId = "", string merchantId = "") =>
-        TerminalValidator.Validate(name, serial, mode, ip, port, terminalId, merchantId);
+        string ip = "192.168.1.50", string port = "9100", string terminalId = "", string merchantId = "",
+        string comPort = "") =>
+        TerminalValidator.Validate(name, serial, mode, ip, port, terminalId, merchantId, comPort);
 
     [Fact]
     public void A_complete_wifi_terminal_is_valid() => Assert.False(Check().Any);
@@ -132,8 +133,12 @@ public class TerminalValidatorTests
         Assert.False(Check(mode: EcrMode.Bluetooth, ip: "", port: "").Any);
 
     [Fact]
-    public void Usb_cable_needs_nothing_beyond_name_and_serial() =>
-        Assert.False(Check(mode: EcrMode.UsbCable, ip: "", port: "").Any);
+    public void Usb_cable_needs_the_virtual_com_port()
+    {
+        Assert.Equal("Choose the USB device this cable uses", Check(mode: EcrMode.UsbCable, ip: "", port: "").ComPort);
+        Assert.False(Check(mode: EcrMode.UsbCable, ip: "", port: "", comPort: "COM8").Any);
+        Assert.Equal("COM8", TerminalValidator.ToTerminal("Cable", "U1", EcrMode.UsbCable, "", "", "", "", "COM8").ConnectionSummary());
+    }
 
     [Fact]
     public void A_blank_port_is_stored_as_9100_and_fields_are_trimmed()

@@ -23,18 +23,19 @@ public sealed record TerminalView(
     int Port,
     string TerminalId,
     string MerchantId,
+    string ComPort,
     string DisplayName,
     string ConnectionSummary,
     bool Supported)
 {
     public static TerminalView From(Terminal t) => new(
         t.SerialNumber, t.Name, t.EcrModeValue, t.ModeLabel, t.IpAddress, t.Port, t.TerminalId, t.MerchantId,
-        t.DisplayName, t.ConnectionSummary(), t.Mode.IsSupportedInExample());
+        t.ComPort, t.DisplayName, t.ConnectionSummary(), t.Mode.IsSupportedInExample());
 }
 
 /// <summary>The terminal edit form as typed: everything is text, validation is Core's.</summary>
 public sealed record TerminalForm(
-    string? Name, string? SerialNumber, int? EcrMode, string? IpAddress, string? Port, string? TerminalId, string? MerchantId);
+    string? Name, string? SerialNumber, int? EcrMode, string? IpAddress, string? Port, string? TerminalId, string? MerchantId, string? ComPort);
 
 /// <summary>The config card: what the SDK plan makes of the selected terminal, before anyone pays.</summary>
 public sealed record ConfigView(

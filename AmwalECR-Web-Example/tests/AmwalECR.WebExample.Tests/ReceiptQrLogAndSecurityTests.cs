@@ -152,7 +152,7 @@ public class LogTests
         var text = log!["text"]!.GetValue<string>();
 
         Assert.Contains("Sending SALE ORDER-L", text);
-        Assert.Contains("signing key (Wi-Fi secure hash key): configured", text);
+        Assert.Contains("signing key (Wi-Fi/CABLE secure hash key): configured", text);
         Assert.DoesNotContain(FakeTerminal.Key, text, StringComparison.OrdinalIgnoreCase);
         Assert.True(log["count"]!.GetValue<int>() > 5);
         Assert.Equal(500, log["capacity"]!.GetValue<int>());

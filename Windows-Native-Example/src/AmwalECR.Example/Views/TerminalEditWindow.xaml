@@ -132,10 +132,29 @@
                     </StackPanel>
                 </StackPanel>
 
-                <TextBlock Style="{StaticResource CaptionText}"
-                           Margin="2,8,0,0"
-                           Text="There is no address to enter. Plug the terminal into this computer with a USB cable. Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. The signing key is the Wi-Fi key."
-                           Visibility="{Binding IsUsbCable, Converter={StaticResource BoolToVisibility}}" />
+                <StackPanel Margin="0,8,0,0" Visibility="{Binding IsUsbCable, Converter={StaticResource BoolToVisibility}}">
+                    <Label Content="_USB device" Target="{Binding ElementName=ComPortBox}" Style="{StaticResource FieldLabel}" />
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right"
+                                Style="{StaticResource OutlinedButton}"
+                                Content="Refresh"
+                                Command="{Binding ReloadComPortsCommand}"
+                                MinWidth="96"
+                                Margin="8,0,0,0" />
+                        <ComboBox x:Name="ComPortBox"
+                                  ItemsSource="{Binding ComPorts}"
+                                  DisplayMemberPath="Label"
+                                  SelectedValuePath="Selection"
+                                  SelectedValue="{Binding ComPort, Mode=TwoWay}"
+                                  MinHeight="40" />
+                    </DockPanel>
+                    <TextBlock Style="{StaticResource ErrorText}"
+                               Text="{Binding ComPortError}"
+                               Visibility="{Binding HasComPortError, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Style="{StaticResource CaptionText}"
+                               Margin="2,4,0,0"
+                               Text="Windows assigns the COM port from this device's serial number. The same terminal on another USB socket can get a different COM. This till remembers the serial and looks the COM up again when you start a sale. The line is 115200 baud, 8 data bits, no parity, 1 stop bit. Choose MediaTek USB VCOM. The signing key is the Wi-Fi key." />
+                </StackPanel>
                 <TextBlock Style="{StaticResource CaptionText}"
                            Margin="2,8,0,0"
                            Text="Bluetooth ECR cannot be exercised from this sample."

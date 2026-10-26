@@ -214,7 +214,7 @@ public class TransactionEngineTests : IDisposable
         var state = await Run(Engine(terminal.Port, wifiKey: ""), Sale());
 
         var failed = Assert.IsType<TransactionState.Failed>(state);
-        Assert.Contains("Wi-Fi secure hash key is not configured", failed.Message);
+        Assert.Contains("Wi-Fi/CABLE secure hash key is not configured", failed.Message);
         Assert.Empty(terminal.Requests);
     }
 
@@ -433,6 +433,6 @@ public class TransactionEngineTests : IDisposable
         engine.LogSelectedConfig(config);
 
         Assert.Contains(_log, l => l.Contains("selected TW1"));
-        Assert.Contains(_log, l => l.Contains("config issue: Wi-Fi secure hash key is not configured"));
+        Assert.Contains(_log, l => l.Contains("config issue: Wi-Fi/CABLE secure hash key is not configured"));
     }
 }

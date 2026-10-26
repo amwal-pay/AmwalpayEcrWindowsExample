@@ -66,17 +66,21 @@ public class TerminalTests
         Assert.Equal(message, body!["errors"]![field]!.GetValue<string>());
         // ...and it is Core's own answer, not a second copy of the rule.
         var core = TerminalValidator.Validate(name, serial, (EcrMode)mode, ip, port, terminalId, "1");
-        Assert.Equal(body["errors"]!.AsObject().Count, new[] { core.Name, core.Serial, core.Ip, core.Port, core.TerminalId, core.MerchantId }.Count(e => e != null));
+        Assert.Equal(body["errors"]!.AsObject().Count, new[] { core.Name, core.Serial, core.Ip, core.Port, core.TerminalId, core.MerchantId, core.ComPort }.Count(e => e != null));
     }
 
     [Fact]
-    public async Task A_usb_terminal_needs_only_a_name_and_serial()
+    public async Task A_usb_terminal_needs_a_name_a_serial_and_the_com_port()
     {
         using var h = new Harness(register: false);
 
-        var (ok, body) = await h.Client.PostJson("/api/terminals", new { name = "Cable", serialNumber = "U1", ecrMode = 1 });
+        var (missing, missingBody) = await h.Client.PostJson("/api/terminals", new { name = "Cable", serialNumber = "U1", ecrMode = 1 });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, missing);
+        Assert.Equal("Choose the USB device this cable uses", missingBody!["errors"]!["comPort"]!.GetValue<string>());
+
+        var (ok, body) = await h.Client.PostJson("/api/terminals", new { name = "Cable", serialNumber = "U1", ecrMode = 1, comPort = "COM8" });
         Assert.Equal(HttpStatusCode.OK, ok);
-        Assert.Equal("USB cable", body!["connectionSummary"]!.GetValue<string>());
+        Assert.Equal("COM8", body!["connectionSummary"]!.GetValue<string>());
         Assert.True(body["supported"]!.GetValue<bool>());
     }
 
@@ -99,10 +103,10 @@ public class TerminalTests
     {
         using var h = new Harness(register: false);
 
-        var (_, usb) = await h.Client.PostJson("/api/terminals", new { name = "U", serialNumber = "U1", ecrMode = 1 });
+        var (_, usb) = await h.Client.PostJson("/api/terminals", new { name = "U", serialNumber = "U1", ecrMode = 1, comPort = "COM8" });
         var (_, bt) = await h.Client.PostJson("/api/terminals", new { name = "B", serialNumber = "B1", ecrMode = 3 });
 
-        Assert.Equal("USB cable", usb!["connectionSummary"]!.GetValue<string>());
+        Assert.Equal("COM8", usb!["connectionSummary"]!.GetValue<string>());
         Assert.True(usb["supported"]!.GetValue<bool>());
         Assert.Equal("Bluetooth", bt!["connectionSummary"]!.GetValue<string>());
         Assert.False(bt["supported"]!.GetValue<bool>());
@@ -199,7 +203,7 @@ public class SettingsTests
         Assert.Equal("SIT", body!["environment"]!.GetValue<string>());
         Assert.False(body["wifi"]!["configured"]!.GetValue<bool>());
         Assert.False(body["webService"]!["configured"]!.GetValue<bool>());
-        Assert.Equal("Wi-Fi secure hash key", body["wifi"]!["label"]!.GetValue<string>());
+        Assert.Equal("Wi-Fi/CABLE secure hash key", body["wifi"]!["label"]!.GetValue<string>());
         Assert.Equal("Web Service secure hash key", body["webService"]!["label"]!.GetValue<string>());
     }
 

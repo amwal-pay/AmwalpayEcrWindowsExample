@@ -747,7 +747,7 @@ the connection, which is why runs live in the registry.
 - **Server date** is the default for the original-transaction date and `today` in `/api/meta`; a
   browser in another timezone can differ by a day at the boundary. Log timestamps are
   server-local with no date.
-- USB cable runs through `UsbAccessoryEcrChannel` in the process that hosts the site, so the cable has to be plugged into that computer. Windows uses the WinUSB driver. macOS and Linux use libusb. Bluetooth still cannot run. The 12 h retention is a code
+- USB cable runs through `SerialEcrChannel` in the process that hosts the site, so the cable has to be plugged into that computer. Choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from the device serial and the till looks that port up again at sale time. Bluetooth still cannot run. The 12 h retention is a code
   constant.
 - **The server guards a running run, not an unread unknown outcome.** While an _Outcome unknown_
   result sits un-acknowledged, `POST /api/transactions` for the same terminal still returns

@@ -53,7 +53,7 @@ if (!config.IsReady)
 EcrOpenedSession session = EcrSessions.Open(
     terminalSerial: terminal.SerialNumber,
     plan: config.Plan,
-    usbChannel: config.Plan.UsesUsbCable ? () => new UsbAccessoryEcrChannel() : null,
+    usbChannel: config.Plan.UsesUsbCable ? () => new SerialEcrChannel(SerialPorts.Resolve(terminal.ComPort)) : null,
     logger: EcrLogger.From(Debug.WriteLine));
 
 // TransactionEngine.OpenSession does the same, then SaleAsync / VoidAsync / …
@@ -69,24 +69,26 @@ till supplies the host side of the cable.
 ## USB cable — setup
 
 TMS: `terminalMode: 1`, `ecrMode: 1`. No IP address. The signing key is the Wi‑Fi key.
-Windows opens the device with WinUSB. macOS and Linux open it with libusb. The till is the
-USB host and asks the terminal to enter accessory mode; after that the sale, void, refund,
-inquiry, e-receipt and close receipt calls are the same as Wi‑Fi.
+The terminal's USB virtual serial port is on, and Windows shows it as MediaTek USB VCOM
+at 115200 8N1. Plug and Play assigns the COM port from the device serial. The same
+terminal on another USB socket can get a different COM number. The sample stores that
+serial and calls `SerialPorts.Resolve` before it opens the port. Sale, void, refund,
+inquiry, e-receipt and close receipt are the same framed messages as Wi‑Fi.
 
 **In the sample UI:** Terminals → paste *Wi‑Fi secure hash key* → Add terminal
-(mode USB cable) → plug the terminal into this computer → Transaction → select it.
+(mode USB cable, USB device) → plug the terminal into this computer → Transaction → select it.
 
 ```csharp
 EcrOpenedSession OpenUsbTerminal(string serial, string wifiSecureHashKey)
 {
     var plan = EcrSessions.Plan(
-        link: new EcrLink.UsbCable(),
+        link: new EcrLink.UsbCable("COM8"),
         config: new EcrConfig { SecureHashKey = wifiSecureHashKey });
 
     return EcrSessions.Open(
         terminalSerial: serial,
         plan: plan,
-        usbChannel: () => new UsbAccessoryEcrChannel());
+        usbChannel: () => new SerialEcrChannel("COM8"));
 }
 ```
 

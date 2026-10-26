@@ -173,5 +173,5 @@ What each test class pins: [docs/implementation.md, tests](docs/implementation.m
 - The server guards a _running_ run, not an unread unknown outcome; the page is what prevents a
   second sale while that result is open.
 - Web Service is not exercised against a real Hub; the smoke test drives Chrome only.
-- USB cable uses the same session as the native sample. The web process must run on the computer the cable is plugged into. Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. macOS and Linux use libusb. Bluetooth and app-to-app are not offered.
+- USB cable uses the same session as the native sample. The web process must run on the computer the cable is plugged into. Choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from the device serial, and the number can change. Bluetooth and app-to-app are not offered.
 - "Today" is the server's date.

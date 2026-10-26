@@ -156,14 +156,16 @@ public static class TransactionOutcomes
     /// </summary>
     public static string UnreachableMessage(string endpoint, int port, string? error)
     {
-        if (endpoint == "USB cable")
+        if (endpoint == "USB cable" || IsVirtualComPort(endpoint))
         {
-            var cable = "USB cable is not reachable";
+            var cable = endpoint == "USB cable" ? "USB cable is not reachable" : $"{endpoint} is not reachable";
             if (!string.IsNullOrEmpty(error)) cable += $"\n({error})";
             return cable + "\n\n" +
                    "Check:\n" +
                    "• The terminal is plugged into this computer with a USB cable\n" +
-                   "• The POS app is on USB cable mode\n" +
+                   "• The terminal's virtual serial port is turned on\n" +
+                   "• Windows assigns the COM port from the terminal's USB serial. The number can change\n" +
+                   "• The POS app is on USB cable mode and shows that USB serial\n" +
                    "• The serial number matches the terminal you selected";
         }
 
@@ -177,4 +179,8 @@ public static class TransactionOutcomes
                "• This PC and the terminal are on the same network, and the network profile is Private\n" +
                "• If the terminal runs on this PC (fake_pos_server), try IP 127.0.0.1";
     }
+
+    private static bool IsVirtualComPort(string endpoint) =>
+        endpoint.StartsWith("COM", StringComparison.OrdinalIgnoreCase)
+        || endpoint.StartsWith("/dev/", StringComparison.Ordinal);
 }

@@ -293,8 +293,40 @@ public sealed class TransactionEngine
         EcrSessions.Open(
             terminalSerial: registered.SerialNumber,
             plan: active.Plan,
-            usbChannel: active.Plan.UsesUsbCable ? () => new UsbAccessoryEcrChannel() : null,
+            usbChannel: active.Plan.UsesUsbCable ? () => OpenCable(registered) : null,
             logger: LoggerFor(active));
+
+    /// <summary>
+    /// The COM port to open. A remembered COM name is replaced with the USB
+    /// serial of the device on that port, so the next sale follows the device
+    /// when Windows assigns a different COM number.
+    /// </summary>
+    private IEcrChannel OpenCable(Terminal registered)
+    {
+        var port = CablePort(registered);
+        _lanLogger.Debug(
+            port.Length == 0
+                ? "[USB] no COM port to open. Plug the terminal in. Windows assigns the number from the USB serial."
+                : $"[USB] this sale opens {port} at 115200 8N1");
+        return new LoggingCable(new SerialEcrChannel(port), _lanLogger);
+    }
+
+    private string CablePort(Terminal registered)
+    {
+        var saved = (registered.ComPort ?? "").Trim();
+        var open = SerialPorts.PortFor(saved);
+        _lanLogger.Debug(
+            open.Port.Length == 0
+                ? $"[USB] saved cable '{saved}' is not plugged in"
+                : $"[USB] saved cable '{saved}' is {open.Port} right now");
+        if (open.Port.Length == 0) return "";
+        if (!string.Equals(open.Remember, saved, StringComparison.OrdinalIgnoreCase))
+        {
+            _repository.Save(registered with { ComPort = open.Remember }, registered.SerialNumber);
+        }
+
+        return open.Port;
+    }
 
     private IEcrLogger LoggerFor(SelectedTerminalConfig config) =>
         config.UsesWebService ? _webServiceLogger : _lanLogger;
@@ -308,4 +340,51 @@ public sealed class TransactionEngine
 
     /// <summary>Same shape the SDK generates: 12 upper-case hex characters.</summary>
     public static string NewReference() => Guid.NewGuid().ToString("N")[..12].ToUpperInvariant();
+
+    /// <summary>
+    /// Writes the cable steps the serial port itself does not: which COM port
+    /// was opened, how many bytes went out, and whether any came back.
+    /// </summary>
+    private sealed class LoggingCable : IEcrChannel
+    {
+        private readonly SerialEcrChannel _inner;
+        private readonly IEcrLogger _logger;
+
+        public LoggingCable(SerialEcrChannel inner, IEcrLogger logger)
+        {
+            _inner = inner;
+            _logger = logger;
+        }
+
+        public string Endpoint => _inner.Endpoint;
+
+        public string Host => _inner.Host;
+
+        public int Port => _inner.Port;
+
+        public async Task<string?> ProbeAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            var problem = await _inner.ProbeAsync(timeout, cancellationToken).ConfigureAwait(false);
+            _logger.Debug(problem == null
+                ? $"[USB] {_inner.Endpoint} is listed. The COM port stays closed until the sale is written."
+                : $"[USB] probe: {problem}");
+            return problem;
+        }
+
+        public async Task<byte[]> ExchangeAsync(byte[] body, TimeSpan timeout, CancellationToken cancellationToken = default)
+        {
+            _logger.Debug($"[USB] writing {body.Length} bytes to {_inner.Endpoint}");
+            try
+            {
+                var answer = await _inner.ExchangeAsync(body, timeout, cancellationToken).ConfigureAwait(false);
+                _logger.Debug($"[USB] read {answer.Length} bytes from {_inner.Endpoint}");
+                return answer;
+            }
+            catch (Exception e)
+            {
+                _logger.Debug($"[USB] {_inner.Endpoint} — {e.GetType().Name}: {e.Message}");
+                throw;
+            }
+        }
+    }
 }

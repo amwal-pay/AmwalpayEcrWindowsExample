@@ -79,8 +79,9 @@ public static class MetaEndpoint
     private static string ModeNote(EcrMode mode) => mode switch
     {
         EcrMode.UsbCable =>
-            "There is no address to enter. Plug the terminal into this computer with a USB cable. " +
-            "Windows attaches its built-in WinUSB driver on the first sale and asks for approval once. The signing key is the Wi-Fi key.",
+            "Plug the terminal in and choose its virtual serial port (MediaTek USB VCOM). " +
+            "Windows assigns the COM port from the device serial, and that number can change. " +
+            "The line is 115200 baud, 8 data bits, no parity, 1 stop bit. The signing key is the Wi-Fi key.",
         EcrMode.Bluetooth => "Bluetooth ECR cannot be exercised from this sample.",
         _ => "",
     };

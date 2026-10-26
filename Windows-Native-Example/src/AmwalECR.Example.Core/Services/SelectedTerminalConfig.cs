@@ -57,7 +57,17 @@ public sealed record SelectedTerminalConfig(Terminal Terminal, EcrSessionPlan Pl
             issues.Add($"{terminal.Mode.Label()} is not supported in this sample");
         }
 
-        var link = ToLink(terminal);
+        var cable = terminal.Mode == EcrMode.UsbCable ? SerialPorts.PortFor(terminal.ComPort) : null;
+        if (cable != null && string.IsNullOrWhiteSpace(terminal.ComPort))
+        {
+            issues.Add("Choose the USB device this cable uses");
+        }
+        else if (cable != null && cable.Port.Length == 0)
+        {
+            issues.Add("Plug in device " + terminal.ComPort.Trim() + ". Windows assigns its COM port from that serial, and the number can change.");
+        }
+
+        var link = ToLink(terminal, cable?.Port ?? "");
         var trimmedKey = secureHashKey.Trim();
         var requested = new EcrConfig
         {
@@ -79,13 +89,11 @@ public sealed record SelectedTerminalConfig(Terminal Terminal, EcrSessionPlan Pl
 
     private static int PortOrDefault(int port) => port is >= 1 and <= 65535 ? port : EcrConfig.DefaultPort;
 
-    private static EcrLink ToLink(Terminal terminal) => terminal.Mode switch
+    private static EcrLink ToLink(Terminal terminal, string cablePort) => terminal.Mode switch
     {
         EcrMode.WebService => new EcrLink.WebService(terminal.MerchantId, terminal.TerminalId),
 
-        // No address to carry: the cable is found by looking at what is plugged
-        // in, so there is nothing here for an operator to type or to get wrong.
-        EcrMode.UsbCable => new EcrLink.UsbCable(),
+        EcrMode.UsbCable => new EcrLink.UsbCable(cablePort),
 
         EcrMode.Wifi => new EcrLink.Lan(terminal.IpAddress, PortOrDefault(terminal.Port)),
 

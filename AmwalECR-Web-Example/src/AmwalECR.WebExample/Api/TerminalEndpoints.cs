@@ -1,6 +1,7 @@
 using AmwalECR.Example.Core.Data;
 using AmwalECR.Example.Core.Terminals;
 using AmwalECR.WebExample.Hosting;
+using AmwalPay.Ecr;
 
 namespace AmwalECR.WebExample.Api;
 
@@ -9,6 +10,9 @@ public static class TerminalEndpoints
 {
     public static void MapTerminals(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/serial-ports", (string? serial, string? saved) =>
+            Results.Ok(SerialPorts.ListFor(saved ?? "", serial ?? "")));
+
         var group = app.MapGroup("/api/terminals");
 
         group.MapGet("", (EcrApp ecr) => Results.Ok(new
@@ -58,11 +62,12 @@ public static class TerminalEndpoints
         var port = form.Port ?? "";
         var terminalId = form.TerminalId ?? "";
         var merchantId = form.MerchantId ?? "";
+        var comPort = form.ComPort ?? "";
 
-        var errors = TerminalValidator.Validate(name, serial, mode, ip, port, terminalId, merchantId);
+        var errors = TerminalValidator.Validate(name, serial, mode, ip, port, terminalId, merchantId, comPort);
         if (errors.Any) return Results.UnprocessableEntity(new FieldErrors(ToDictionary(errors)));
 
-        var terminal = TerminalValidator.ToTerminal(name, serial, mode, ip, port, terminalId, merchantId);
+        var terminal = TerminalValidator.ToTerminal(name, serial, mode, ip, port, terminalId, merchantId, comPort);
         return ecr.Terminals.Save(terminal, originalSerial) switch
         {
             SaveResult.Failed failed => Results.UnprocessableEntity(
@@ -81,6 +86,7 @@ public static class TerminalEndpoints
         if (e.Port != null) errors["port"] = e.Port;
         if (e.TerminalId != null) errors["terminalId"] = e.TerminalId;
         if (e.MerchantId != null) errors["merchantId"] = e.MerchantId;
+        if (e.ComPort != null) errors["comPort"] = e.ComPort;
         return errors;
     }
 }
