@@ -258,6 +258,8 @@ button.primary:hover:not(:disabled) { background: var(--brand-hover); }
 button.primary:active:not(:disabled) { background: var(--brand-pressed); }
 
 button.outlined { border-color: var(--outline); color: var(--brand-text); }
+#btn-settle, #btn-reach { width: 100%; margin-top: 8px; }
+#reach-status { margin-top: 8px; }
 button.outlined:hover:not(:disabled), button.text:hover:not(:disabled) { background: color-mix(in srgb, var(--brand) 10%, transparent); }
 
 button.danger { color: var(--error); font-weight: 600; }

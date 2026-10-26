@@ -259,14 +259,15 @@ public sealed class TransactionRegistry
         lock (_gate)
         {
             if (!_runs.TryGetValue(id, out var run)) return new CloseReceiptOutcome.NotFound();
-            if (run.State is not TransactionState.Completed completed)
+            if (run.State is not TransactionState.Completed and not TransactionState.Settled)
             {
                 return new CloseReceiptOutcome.NotApplicable();
             }
 
             serial = run.TerminalSerial;
             originalMerchantReference = "";
-            if (run.UsesWebService
+            if (run.State is TransactionState.Completed completed
+                && run.UsesWebService
                 && (completed.Type == EcrTransactionType.Sale
                     || completed.Type == EcrTransactionType.Void
                     || completed.Type == EcrTransactionType.Refund))

@@ -52,7 +52,7 @@ public partial class App : Application
         var clipboard = new ClipboardService();
         var dialogs = new DialogService();
 
-        var transaction = new TransactionViewModel(repository, settings, engine);
+        var transaction = new TransactionViewModel(repository, settings, engine, dialogs);
         var terminals = new TerminalsViewModel(repository, new SettingsViewModel(settings), dialogs);
         var main = new MainViewModel(transaction, terminals, new LogViewModel(log, clipboard));
 

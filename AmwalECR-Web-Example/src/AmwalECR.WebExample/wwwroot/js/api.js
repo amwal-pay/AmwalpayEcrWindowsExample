@@ -59,6 +59,8 @@ export const api = {
 
   pending: () => request('GET', '/api/transactions'),
   start: (form) => request('POST', '/api/transactions', form),
+  settle: (terminalSerial) => request('POST', '/api/transactions/settlement', { terminalSerial }),
+  reachability: (terminalSerial) => request('POST', '/api/transactions/reachability', { terminalSerial }),
   transaction: (id) => request('GET', `/api/transactions/${enc(id)}`),
   cancel: (id) => request('POST', `/api/transactions/${enc(id)}/cancel`),
   inquire: (id) => request('POST', `/api/transactions/${enc(id)}/inquire`),

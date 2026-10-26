@@ -172,6 +172,14 @@ public sealed class TransactionEngine
             return TransactionOutcomes.FromInquiry(inquiry, request);
         }
 
+        if (request.Type == EcrTransactionType.Settlement)
+        {
+            var settlement = await session.SettlementAsync(reference, ct).ConfigureAwait(true);
+            return settlement is EcrSettlement.Failed failed
+                ? new TransactionState.Failed(failed.Failure.Message)
+                : new TransactionState.Settled(settlement);
+        }
+
         var result = request.Type switch
         {
             EcrTransactionType.Sale => await session.SaleAsync(
@@ -237,6 +245,53 @@ public sealed class TransactionEngine
         {
             LoggerFor(active).Debug($"[App] close receipt failed: {e.Message}");
             return $"Could not close the receipt: {e.Message}";
+        }
+    }
+
+    /// <summary>What the Check reachability button shows. The sale path does not use it.</summary>
+    public sealed record ReachabilityCheck(bool Reachable, string Message);
+
+    /// <summary>
+    /// Web Service only. Posts <c>/Ecr/CheckReachability</c> and returns what to show.
+    /// A sale does not call this.
+    /// </summary>
+    public async Task<ReachabilityCheck> CheckWebServiceReachabilityAsync(string terminalSerial, CancellationToken ct = default)
+    {
+        var registered = _repository.FindBySerial(terminalSerial);
+        if (registered == null)
+        {
+            return new ReachabilityCheck(false, $"Terminal {terminalSerial} is no longer registered");
+        }
+        if (registered.Mode != EcrMode.WebService)
+        {
+            return new ReachabilityCheck(false, "Check reachability is only available for Web Service");
+        }
+
+        var active = ResolveConfig(registered);
+        if (!active.IsReady) return new ReachabilityCheck(false, string.Join("\n", active.Issues));
+
+        try
+        {
+            var reachability = await OpenSession(registered, active).CheckReachabilityAsync(ct).ConfigureAwait(true);
+            if (reachability == null)
+            {
+                return new ReachabilityCheck(false, "Check reachability is only available for Web Service");
+            }
+            if (reachability.Reachable)
+            {
+                return new ReachabilityCheck(true, $"{reachability.Endpoint} is reachable");
+            }
+            return new ReachabilityCheck(
+                false,
+                TransactionOutcomes.UnreachableMessage(reachability.Endpoint, reachability.Port, reachability.Error));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return new ReachabilityCheck(false, "Stopped waiting for the reachability check");
+        }
+        catch (Exception e)
+        {
+            return new ReachabilityCheck(false, e.Message);
         }
     }
 

@@ -156,6 +156,18 @@ public static class TransactionOutcomes
     /// </summary>
     public static string UnreachableMessage(string endpoint, int port, string? error)
     {
+        if (endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || endpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+        {
+            var hub = $"{endpoint} is not reachable";
+            if (!string.IsNullOrEmpty(error)) hub += $"\n({error})";
+            return hub + "\n\n" +
+                   "Check:\n" +
+                   "• The terminal is online for Web Service ECR\n" +
+                   "• Merchant id and terminal id match the terminal\n" +
+                   "• This PC can reach the ECR host";
+        }
+
         if (endpoint == "USB cable" || IsVirtualComPort(endpoint))
         {
             var cable = endpoint == "USB cable" ? "USB cable is not reachable" : $"{endpoint} is not reachable";
