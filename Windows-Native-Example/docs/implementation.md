@@ -16,7 +16,7 @@ host-specific design is in [the web implementation guide](../../AmwalECR-Web-Exa
 - [e. The form model](#e-the-form-model)
 - [f. Amount entry](#f-amount-entry)
 - [g. The transaction engine, state machine and payment-safety rules](#g-the-transaction-engine-state-machine-and-payment-safety-rules)
-- [h. Result presentation, Close receipt and the receipt QR](#h-result-presentation-close-receipt-and-the-receipt-qr)
+- [h. Result presentation, settlement, Close receipt and the receipt QR](#h-result-presentation-settlement-close-receipt-and-the-receipt-qr)
 - [i. Logging](#i-logging)
 - [j. Threading](#j-threading)
 - [k. XAML pitfalls](#k-xaml-pitfalls)
@@ -153,14 +153,16 @@ EcrSessions.Plan(link, config, rawKey)                         // validates; nev
 EcrSessions.Open(serial, plan, usbChannel, logger)             // throws if the plan has issues
         |  EcrOpenedSession
 session.ProbeReachabilityAsync / SaleAsync / VoidAsync / RefundAsync / InquireAsync /
-        InquireByReferenceAsync / ReceiptAsync / CloseReceiptAsync   // same shape on Wi-Fi and Web Service
+        InquireByReferenceAsync / ReceiptAsync / SettlementAsync / CloseReceiptAsync
+        CheckReachabilityAsync                                          // Web Service only, not before a sale
 ```
 
 `SelectedTerminalConfig.Resolve` does the mapping the SDK leaves to the app:
 
 1. If the mode is not `IsSupportedInExample`, add `"<Mode> is not supported in this sample"`.
 2. Map the terminal to an `EcrLink`: Wi-Fi -> `EcrLink.Lan(ip, port)`, Web Service ->
-   `EcrLink.WebService(merchantId, terminalId)`, USB -> `EcrLink.UsbCable`, anything else
+   `EcrLink.WebService(merchantId, terminalId)`, USB -> `EcrLink.UsbCable(comPort)` after
+   `SerialPorts.Resolve` finds the COM port for the saved device serial, anything else
    (Bluetooth) -> `EcrLink.Lan(ip, 9100)` as a placeholder. An out-of-range port becomes 9100.
 3. Build the requested `EcrConfig` with the environment and IDs, and the key only if
    `EcrConfig.IsValidSecureHashKey` accepts it.
@@ -175,10 +177,13 @@ Typical issues are produced by the SDK: `Wi-Fi/CABLE secure hash key is not conf
 `IP address is required for Wi-Fi ECR`, `Merchant ID must be numeric`.
 
 **Wi-Fi vs Web Service at run time.** Same three calls, different link, key and plan fields.
-Web Service differs in that `ProbeReachabilityAsync` returns `null` (the engine skips the probe),
-a lost money-moving answer arrives as a `Declined` (see [g](#g-the-transaction-engine-state-machine-and-payment-safety-rules)),
+Web Service differs in that `ProbeReachabilityAsync` returns `null` (the engine skips the probe
+before a sale). **Check reachability** is a separate button: `CheckReachabilityAsync` posts
+`/Ecr/CheckReachability` and does not start a transaction. A lost money-moving answer arrives as
+a `Declined` (see [g](#g-the-transaction-engine-state-machine-and-payment-safety-rules)),
 `ReceiptAsync` is unavailable, and by-reference inquiry posts `/Ecr/Inquiry` with a blank date.
-SDK default response timeouts: 120 s Wi-Fi; a Web Service plan raises the default to 130 s.
+Settlement is available on Wi-Fi, USB, and Web Service. SDK default response timeouts: 120 s
+Wi-Fi and USB; a Web Service plan raises the default to 130 s.
 
 **The config card** (`TerminalConfigCard.xaml`) takes a `SelectedTerminalConfig` and shows mode,
 transport, connection, key label and status and every issue; `TransactionViewModel.CanStart` is
@@ -277,6 +282,10 @@ real socket without a window.
 6. **Execute** by type. Inquiry calls `InquireAsync` (receipt number and date) or
    `InquireByReferenceAsync` with the form's date as-is (blank for by-reference: a reference is
    not day-scoped, and a synthetic "today" would miss older transactions on Web Service).
+   Settlement calls `SettlementAsync`. It does not move money, so a blank reference is left for
+   the SDK to mint, and cancelling the wait returns `Idle` rather than an unknown outcome.
+   `EcrSettlement.Failed` becomes `Failed` with no look-up reference; the other three results
+   become `Settled`.
 7. Classify with `TransactionOutcomes.FromResult` / `FromInquiry`.
 8. Catch: cancellation -> `CancelledState`; `ArgumentException` -> `Failed` (nothing sent);
    anything else -> `Failed("Unexpected error: ...")`, with the reference for money-moving types.
@@ -384,7 +393,7 @@ it when the engine reports `InProgress`, ticks once a second and clears it when 
 is display only: the SDK enforces the timeout. `CanCancel` is true while busy or while a receipt
 is being fetched.
 
-## h. Result presentation, Close receipt and the receipt QR
+## h. Result presentation, settlement, Close receipt and the receipt QR
 
 `ResultPresenter` turns a `TransactionState` into a `ResultDialogModel` (headline, tone, amount,
 message, fields, hints, note, raw payload, optional `InquirableReference`, receipt flags). It is
@@ -408,6 +417,12 @@ the dialog offered has started) closes it. `OnClosed` calls `ResultAcknowledged(
 close was a hand-off. `ResultDialogPresenter` opens the dialog from the dispatcher
 (`BeginInvoke`) so the modal loop never runs inside a binding update.
 
+**Settlement.** **Manual settlement** confirms, then `Start`s a `TransactionRequest` whose type is
+`Settlement`. The engine calls `session.SettlementAsync`. `ResultPresenter.ForSettlement` reads
+**Settled** (batch, transaction count, net amount, and sale / refund / void / pre-auth / capture
+rows), **Nothing to settle**, or **Not settled**. An exchange failure is `TransactionState.Failed`
+with no look-up reference (**Not completed**). Repeating the call is safe.
+
 **Close receipt.** `TransactionEngine.CloseTerminalReceiptAsync` calls
 `session.CloseReceiptAsync` and returns a message (`Terminal is back on its idle screen`,
 `Terminal refused: ...`, `Could not reach the terminal: ...`); it never throws except for
@@ -415,8 +430,10 @@ cancellation. Wi-Fi sends `CLOSE_RECEIPT`; on Web Service the SDK posts `/Ecr/cl
 `originalMerchantReference` must be the sale/void/refund reference (taken from
 `Completed.Result.MerchantReference`), otherwise the app answers
 `Close receipt needs the sale / void / refund reference`. The button (`ShowCloseReceipt`) shows
-on a `Completed` result for Wi-Fi, USB or Web Service terminals, keeps the dialog open, and is
-independent of the dialog's **Close**, which only dismisses.
+on a `Completed` sale, void, or refund, and on a `Settled` result for Wi-Fi and USB. Web
+Service close receipt still needs the sale, void, or refund reference, which a settlement
+result does not carry, so that button reports the missing reference. The dialog stays open.
+The dialog's **Close** only dismisses it.
 
 **Receipt QR.** After an inquiry over Wi-Fi or USB cable the dialog offers **QR receipt**
 (`OffersReceipt` and `Inquired { Receipt: null, FetchingReceipt: false }`).
@@ -551,8 +568,9 @@ the type there first. Then the `switch` in `TransactionEngine.ExecuteAsync` (its
 throws), classification in `TransactionOutcomes` if the result shape differs, wording in
 `ResultPresenter`, and `TransactionFormViewModel` (`StartButtonText`, `AmountHelp`). Get
 `MovesMoney` right: it decides whether the operation gets a reference and whether a cancel is an
-unknown outcome. `Receipt` and `CloseReceipt` exist in the enum but are not in `MenuOptions`;
-they follow a result.
+unknown outcome. `Receipt`, `CloseReceipt`, and `Settlement` exist in the enum but are not
+in `MenuOptions`. Receipt and close receipt follow a result. Settlement is the **Manual
+settlement** button: it confirms, then `Start`s a `TransactionRequest` of type `Settlement`.
 
 ### USB cable
 
@@ -597,11 +615,13 @@ the serial as the key, the `SaveResult` contract and "write first, then update m
   designed in but not verified with Narrator or contrast tools.
 - **Bluetooth is not supported.** USB cable is: `TransactionEngine` opens `SerialEcrChannel` on the COM port Windows has assigned to the saved device serial (MediaTek USB VCOM, 115200 8N1). App-to-app is not offered.
 - **Web Service has no fake Hub and no loopback test**; it needs the real backend. Receipts are
-  not offered over it. The fake terminal has no `CLOSE_RECEIPT` handler.
+  not offered over it. The fake terminal has no `CLOSE_RECEIPT` or `SETTLEMENT` handler.
+  Check reachability also needs the real Hub.
 - **The amount limit is a constant** (`100000.000`); a real terminal takes it from the server.
 - **No single-instance guard.** Both files are read once at start-up, so two copies overwrite
   each other's terminal list.
 - Not localised; the currency label and symbol are hard-coded to OMR.
-- **The SDK dependency.** The default `nuget` build fails until `AmwalPay.Ecr` 1.0.2 is
-  published (the samples use `CloseReceiptAsync`); build with `-p:EcrSdkDependency=project`.
+- **The SDK dependency.** The default `nuget` build fails: the samples use `CloseReceiptAsync`,
+  `SettlementAsync`, `CheckReachabilityAsync`, and `SerialEcrChannel`, which are in the SDK
+  checkout and not in the published packages. Build with `-p:EcrSdkDependency=project`.
 - The samples target .NET 8, which Microsoft stops supporting on 10 Nov 2026.

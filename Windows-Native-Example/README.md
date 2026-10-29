@@ -1,8 +1,9 @@
 # Amwal ECR - Windows (WPF) sample
 
 A working till for Windows built on the C# `AmwalPay.Ecr` SDK: register terminals, key an
-amount, pick a terminal, run a sale, void, refund or inquiry, read the result. It is meant to be
-read as much as run.
+amount, pick a terminal, run a sale, void, refund, inquiry, or settlement, and read the result.
+On Web Service it can also check whether the terminal is reachable. It is meant to be read as
+much as run.
 
 - How it is built (layering, state machine, payment-safety rules, extension recipes):
   [docs/implementation.md](docs/implementation.md)
@@ -29,16 +30,18 @@ or open `AmwalECR-Example.sln` in Visual Studio 2022 (17.8+) with
 | `nuget` (default) | `AmwalPay.Ecr` `$(EcrSdkVersion)` (default `1.0.1`) from nuget.org                                                                                               |
 | `project`         | `..\..\AmwalECR-Windows\src\AmwalPay.Ecr\AmwalPay.Ecr.csproj`, a sibling checkout of the SDK; override with `-p:EcrSdkProjectPath=<path to AmwalPay.Ecr.csproj>` |
 
-**Use `project`.** The samples open a USB cable with `SerialEcrChannel`. That type is in
-the SDK checkout and not in the published 1.0.2 package, so a default (`nuget`) build fails.
+**Use `project`.** The samples open a USB cable with `SerialEcrChannel`, settle with
+`SettlementAsync`, and check the Hub with `CheckReachabilityAsync`. Those members are in the
+SDK checkout and not in the published packages, so a default (`nuget`) build fails.
 
 ```powershell
 git clone https://github.com/amwal-pay/AmwalpayEcrWindows ..\..\AmwalECR-Windows   # next to the repo folder
 dotnet build AmwalECR-Example.sln -p:EcrSdkDependency=project
 ```
 
-Once 1.0.2 is on nuget.org, `dotnet build AmwalECR-Example.NuGet.slnf` builds without a checkout
-(the `.slnf` leaves the SDK project out; the full `.sln` lists it). Only `AmwalECR.Example.Core`
+When a published package includes settlement, reachability, and `SerialEcrChannel`,
+`dotnet build AmwalECR-Example.NuGet.slnf` builds without a checkout (the `.slnf` leaves the SDK
+project out; the full `.sln` lists it). Only `AmwalECR.Example.Core`
 references the SDK; the app, the tests and the web sample receive it through Core. After
 switching modes, restore again (Core's `obj` is shared). Any value other than `project` or
 `nuget`, or a `project` checkout that is missing, fails the build with an explicit message.
@@ -94,15 +97,17 @@ Hub; you need credentials from Amwal. In the app:
 3. **Transaction** -> select it. The config card must read `HTTPS Web Service (JSON HMAC)` and
    _configured_. Blockers it names include a missing or non-numeric ID and
    `Web Service secure hash key is not configured`.
-4. Start a sale. The Hub is contacted only then; there is no reachability probe.
+4. **Check reachability** asks the Hub (`/Ecr/CheckReachability`) and shows the answer. A sale
+   does not run that check. Start a sale when you are ready to take a payment.
 
 Hub hosts come from the SDK's environment setting. SDK checklist:
 [integration guide, initialization](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#initialization-process).
 
 ## What it demonstrates
 
-**Operations.** Sale, void, refund and inquiry. The form follows the SDK's
-`EcrTransactionType` flags, so what is shown and what is required cannot disagree:
+**Operations.** Sale, void, refund, and inquiry. Settlement is a separate **Manual settlement**
+button, not a form type. The form follows the SDK's `EcrTransactionType` flags, so what is shown
+and what is required cannot disagree:
 
 |         | Amount                         | Receipt number | Date | Merchant reference      |
 | ------- | ------------------------------ | -------------- | ---- | ----------------------- |
@@ -149,10 +154,24 @@ sale is a successful inquiry. A failed inquiry is a failure ("Not completed", or
 unknown" with the reference kept for another try), never "Not found". Inquiry reads only, so the
 terminal answers it even mid-payment.
 
-**Close receipt.** A separate button on a completed sale, void or refund result asks the terminal
-to put its receipt away (Wi-Fi `CLOSE_RECEIPT`; Web Service `/Ecr/closeReceipt`, using the
+**Settlement.** **Manual settlement** asks for confirmation, then closes the current batch and
+prints the settlement receipt. Wi-Fi and USB send `SETTLEMENT`. Web Service posts `/Ecr/settle`.
+The dialog reads **Settled** (batch, net amount, and the sale, refund, void, pre-auth, and
+capture totals), **Nothing to settle**, or **Not settled**. A lost answer is **Not completed**;
+repeat the call. A batch that already closed answers **Nothing to settle** the next time.
+Cancelling the wait returns to idle: settlement does not move money, so it is not an unknown
+outcome. On Wi-Fi and USB, **Close receipt** on that result puts the settlement summary away.
+
+**Check reachability.** Shown only for a Web Service terminal. It posts `/Ecr/CheckReachability`
+and reports whether that Hub endpoint answers. It does not start a sale, and a sale does not
+call it. Wi-Fi and USB still probe the link automatically before a sale; that probe does not
+prove the terminal is idle.
+
+**Close receipt.** A separate button on a completed sale, void, or refund result asks the terminal
+to put its receipt away (Wi-Fi and USB `CLOSE_RECEIPT`; Web Service `/Ecr/closeReceipt`, using the
 sale/void/refund merchant reference as `originalMerchantReference`). Dismissing the dialog does
-not send it.
+not send it. On Web Service a settlement result does not carry that reference, so close receipt
+there still needs the sale, void, or refund.
 
 **E-receipt QR.** After an inquiry over Wi-Fi the dialog can fetch the transaction's e-receipt
 and draw it as a QR code on the PC. Web Service has no receipt operation and the dialog says so.
@@ -163,7 +182,7 @@ transaction records.
 
 ## USB cable
 
-Register the terminal as USB cable and choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from that device's serial number, and the number can change when the USB socket changes. The till stores the serial and looks up the current COM port when a sale starts. The signing key is the Wi-Fi key. The terminal's virtual serial port has to be on, and the POS idle screen shows the USB serial Windows will see. E-receipt and close receipt work on the cable. Bluetooth and app-to-app are not offered.
+Register the terminal as USB cable and choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from that device's serial number, and the number can change when the USB socket changes. The till stores the serial and looks up the current COM port when a sale or settlement starts. The signing key is the Wi-Fi key. The terminal's virtual serial port has to be on, and the POS idle screen shows the USB serial Windows will see. Sale, void, refund, inquiry, e-receipt, close receipt, and settlement use the same session calls as Wi-Fi. Bluetooth and app-to-app are not offered.
 
 ## Testing without a terminal
 
@@ -194,7 +213,7 @@ machines and can answer instead of your fake. `19100` is safe; real terminals st
 | `--host 127.0.0.1`                 | Listen on loopback only (default `0.0.0.0`)                                                                                             |
 | a different key in the app         | _"The answer was not signed with this terminal's key"_, an unknown outcome                                                              |
 
-The fake has no `CLOSE_RECEIPT` handler; check that action against a real terminal.
+The fake has no `CLOSE_RECEIPT` or `SETTLEMENT` handler. Check those actions against a real terminal.
 
 ## Build, test, publish
 

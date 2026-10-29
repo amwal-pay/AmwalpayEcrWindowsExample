@@ -1,9 +1,10 @@
 # Amwal ECR - C# samples
 
 Two runnable tills built on the C# [`AmwalPay.Ecr`](https://github.com/amwal-pay/AmwalpayEcrWindows)
-SDK. Each registers terminals, takes an amount, and runs a sale, void, refund or inquiry against
-an Amwal POS terminal (Wi-Fi) or the Amwal Hub (Web Service). Read them as reference code for
-wiring the SDK into your own app.
+SDK. Each registers terminals, takes an amount, and runs a sale, void, refund, inquiry, or
+settlement against an Amwal POS terminal (Wi-Fi or USB cable) or the Amwal Hub (Web Service).
+Web Service also has a separate reachability check. Read them as reference code for wiring the
+SDK into your own app.
 
 |                     | [Windows-Native-Example](Windows-Native-Example/README.md)         | [AmwalECR-Web-Example](AmwalECR-Web-Example/README.md)           |
 | ------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
@@ -24,8 +25,9 @@ The web sample has **no authentication** and listens on loopback only. Read its
 
 The samples depend on the SDK through `Directory.Build.props`. The default,
 `EcrSdkDependency=nuget`, restores `AmwalPay.Ecr` 1.0.1 from nuget.org. **That build currently
-fails**: the samples call `CloseReceiptAsync`, which exists only in SDK 1.0.2, and nuget.org has
-only 1.0.0 and 1.0.1. Until 1.0.2 is published, build against the SDK source:
+fails.** The samples call `CloseReceiptAsync`, `SettlementAsync`, `CheckReachabilityAsync`, and
+`SerialEcrChannel`. Those members are in the SDK checkout (see its Unreleased changelog) and are
+not in the packages on nuget.org (1.0.0 and 1.0.1). Build against the SDK source:
 
 ```bash
 # SDK checked out next to this folder, as ../AmwalECR-Windows
@@ -41,7 +43,8 @@ each example's README.
 
 No terminal? The signed fake terminal in
 [`Windows-Native-Example/tools/`](Windows-Native-Example/README.md#testing-without-a-terminal) stands
-in for a Wi-Fi terminal. Web Service mode needs a real Hub environment and credentials.
+in for a Wi-Fi terminal. It does not answer `CLOSE_RECEIPT` or `SETTLEMENT`. USB cable needs the
+terminal plugged into this computer. Web Service needs a real Hub environment and credentials.
 
 ## What is in the repository
 

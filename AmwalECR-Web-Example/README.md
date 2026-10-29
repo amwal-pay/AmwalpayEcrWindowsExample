@@ -1,7 +1,8 @@
 # Amwal ECR - web sample
 
 The ASP.NET Core front end of the Amwal ECR samples: register POS terminals, key an amount in
-the browser, pick a terminal, run a sale, void, refund or inquiry. It runs **the same Core
+the browser, pick a terminal, run a sale, void, refund, inquiry, or settlement, and, on Web
+Service, check reachability. It runs **the same Core
 library** as the [WPF sample](../Windows-Native-Example/README.md) (terminal storage, form rules,
 transaction engine, outcome classification, result wording), so behaviour and wording match. The
 client is plain HTML/CSS/ES modules: no build step, no CDN, works offline.
@@ -77,13 +78,15 @@ the Terminals screen, add a terminal in mode Web Service (serial, numeric mercha
 IDs), and select it on the Transaction screen; the config card
 (`GET /api/terminals/{serial}/config` -> `isReady: true`) must read ready before **Start**.
 Typical issues: missing or non-numeric IDs, or `Web Service secure hash key is not configured`.
-There is no reachability probe; keep the merchant reference so **Inquire by reference** can
-resolve a lost answer.
+**Check reachability** posts `/Ecr/CheckReachability` and does not start a sale. A sale still
+does not probe first; keep the merchant reference so **Inquire by reference** can resolve a
+lost answer.
 
 ## What it demonstrates
 
 Everything the [WPF sample demonstrates](../Windows-Native-Example/README.md#what-it-demonstrates)
-(operations, amount entry, unknown outcomes, inquiry, Close receipt, QR) plus:
+(operations, amount entry, unknown outcomes, inquiry, settlement, Check reachability, Close
+receipt, QR) plus:
 
 - **Transactions run on the server and the page polls.** `POST /api/transactions` starts a run
   (`202`); closing the tab or dropping a request never cancels a payment, only the explicit
@@ -93,9 +96,18 @@ Everything the [WPF sample demonstrates](../Windows-Native-Example/README.md#wha
   the server, `null` once finished); the page counts `m:ss` down from the server's value.
 - **Cancel only stops waiting.** A cancelled sale, void or refund becomes an unknown outcome
   with **Inquire by reference**, never "cancelled".
-- **Close receipt** is its own button on a completed sale, void or refund
-  (`POST /api/transactions/{id}/close-receipt`): Wi-Fi `CLOSE_RECEIPT`, Web Service
-  `/Ecr/closeReceipt` with the operation's merchant reference. Closing the dialog does not send it.
+- **Manual settlement** confirms, then `POST /api/transactions/settlement`. Wi-Fi and USB send
+  `SETTLEMENT`; Web Service posts `/Ecr/settle`. The result is **Settled**, **Nothing to
+  settle**, or **Not settled**. A lost answer is **Not completed**; repeat the call. Cancelling
+  the wait returns to idle.
+- **Check reachability** is its own button on a Web Service terminal
+  (`POST /api/transactions/reachability`). It does not start a transaction. Wi-Fi and USB still
+  probe automatically before a sale.
+- **Close receipt** is its own button on a completed sale, void, or refund, and on a settled
+  result over Wi-Fi or USB (`POST /api/transactions/{id}/close-receipt`): Wi-Fi and USB
+  `CLOSE_RECEIPT`, Web Service `/Ecr/closeReceipt` with the sale, void, or refund merchant
+  reference. Closing the dialog does not send it. A Web Service settlement result does not
+  carry that reference.
 - **One running transaction per terminal**, enforced by the server (`409`).
 - **Write-only keys.** The API never returns a stored key, not even its length: only
   `configured: true/false` and the key's label. The page offers _Replace / Clear_, not _Show_.
@@ -122,6 +134,8 @@ JSON in, JSON out. Mutating calls (`POST`, `PUT`, `DELETE`) **must** send
 | `POST /api/transactions/{id}/cancel`                            | Stop waiting                                                                                     |
 | `POST /api/transactions/{id}/inquire`                           | Look an unknown outcome up by its reference                                                      |
 | `POST /api/transactions/{id}/receipt`                           | Fetch the e-receipt of an inquiry result (Wi-Fi and USB cable)                                   |
+| `POST /api/transactions/settlement`                             | Close the current batch (`202`, same poll as a sale)                                            |
+| `POST /api/transactions/reachability`                           | Web Service only: `{ reachable, message }`. Does not start a transaction                         |
 | `POST /api/transactions/{id}/close-receipt`                     | Ask the terminal to put its receipt away                                                         |
 | `DELETE /api/transactions/{id}`                                 | The operator has read the result (`409` while running)                                           |
 | `GET /api/qr?text=`                                             | `image/svg+xml`                                                                                  |
@@ -173,5 +187,5 @@ What each test class pins: [docs/implementation.md, tests](docs/implementation.m
 - The server guards a _running_ run, not an unread unknown outcome; the page is what prevents a
   second sale while that result is open.
 - Web Service is not exercised against a real Hub; the smoke test drives Chrome only.
-- USB cable uses the same session as the native sample. The web process must run on the computer the cable is plugged into. Choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from the device serial, and the number can change. Bluetooth and app-to-app are not offered.
+- USB cable uses the same session as the native sample, including settlement. The web process must run on the computer the cable is plugged into. Choose the MediaTek USB VCOM device (115200 8N1). Windows assigns the COM port from the device serial, and the number can change. Bluetooth and app-to-app are not offered. The signed fake terminal does not answer `SETTLEMENT` or `CLOSE_RECEIPT`.
 - "Today" is the server's date.

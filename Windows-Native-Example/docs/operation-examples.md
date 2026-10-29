@@ -1,23 +1,26 @@
-# Full examples — Wi‑Fi and Web Service
+# Full examples — Wi‑Fi, USB cable, and Web Service
 
 Copy-paste guide for integrators reading these samples. Each section is a complete flow for
-**one transport**. The SDK's own cookbook (same operations, no sample types) is its
-[integration guide §5a](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/docs/integration-guide.md#5a-copy-paste-examples-wi-fi-and-web-service).
+**one transport**. The SDK README is the cookbook for the same operations without the sample
+types: [AmwalPay.Ecr README](https://github.com/amwal-pay/AmwalpayEcrWindows/blob/main/README.md).
 
-The Close receipt call (section 14) exists only in SDK 1.0.2; build the samples with
-`-p:EcrSdkDependency=project` until it is published.
+Close receipt, settlement, Web Service reachability, and `SerialEcrChannel` are in the SDK
+checkout and not in the published NuGet packages. Build the samples with
+`-p:EcrSdkDependency=project`.
 
 **Keys live in settings** (two different Amwal secrets). **Terminal records hold addresses
 only** — no secure-hash field on Add/Edit terminal. Both the WPF and web samples share
 this Core path (`SelectedTerminalConfig` → `EcrSessions.Plan` → `EcrSessions.Open`).
 
-| | Wi‑Fi (`ecrMode: 2`) | Web Service (`ecrMode: 4`) |
-|---|---|---|
-| Settings | *Wi‑Fi secure hash key* | Environment (SIT/UAT/PROD) + *Web Service secure hash key* |
-| Terminal form | name, serial, IP, port | name, serial, merchant ID, terminal ID |
-| Client | `EcrTerminal` / Wi-Fi session | `EcrWebServiceTerminal` / Hub session |
-| Probe / e-receipt | Yes | No |
-| Default response timeout | 120 s | 130 s (the plan raises the 120 s default) |
+| | Wi‑Fi (`ecrMode: 2`) | USB cable (`ecrMode: 1`) | Web Service (`ecrMode: 4`) |
+|---|---|---|---|
+| Settings | *Wi‑Fi secure hash key* | the same Wi‑Fi key | Environment (SIT/UAT/PROD) + *Web Service secure hash key* |
+| Terminal form | name, serial, IP, port | name, serial, USB device | name, serial, merchant ID, terminal ID |
+| Client | `EcrTerminal` / Wi-Fi session | `SerialEcrChannel` through `Open` | `EcrWebServiceTerminal` / Hub session |
+| Probe before a sale | Yes | Yes | No. **Check reachability** is a separate button |
+| E-receipt | Yes | Yes | No |
+| Settlement | Yes | Yes | Yes (`/Ecr/settle`) |
+| Default response timeout | 120 s | 120 s | 130 s (the plan raises the 120 s default) |
 
 ```csharp
 using System.Diagnostics;
@@ -73,7 +76,7 @@ The terminal's USB virtual serial port is on, and Windows shows it as MediaTek U
 at 115200 8N1. Plug and Play assigns the COM port from the device serial. The same
 terminal on another USB socket can get a different COM number. The sample stores that
 serial and calls `SerialPorts.Resolve` before it opens the port. Sale, void, refund,
-inquiry, e-receipt and close receipt are the same framed messages as Wi‑Fi.
+inquiry, e-receipt, close receipt, and settlement are the same framed messages as Wi‑Fi.
 
 **In the sample UI:** Terminals → paste *Wi‑Fi secure hash key* → Add terminal
 (mode USB cable, USB device) → plug the terminal into this computer → Transaction → select it.
@@ -388,11 +391,13 @@ EcrWebServiceTerminal OpenWebServiceTerminal(
 // Core path (what TransactionEngine uses):
 // var config = SelectedTerminalConfig.Resolve(registered, environment, webServiceSecureHashKey);
 // var session = EcrSessions.Open(registered.SerialNumber, config.Plan, logger: …);
-// ProbeReachabilityAsync returns null — engine skips it.
+// ProbeReachabilityAsync returns null — the engine skips it before a sale.
+// Check reachability is CheckReachabilityAsync, and only when the operator asks.
 ```
 
 Hub hostnames are SDK-internal (chosen from SIT / UAT / PROD). Paths:
-`/Ecr/Sale`, `/Ecr/Void`, `/Ecr/Refund`, `/Ecr/Inquiry`.
+`/Ecr/Sale`, `/Ecr/Void`, `/Ecr/Refund`, `/Ecr/Inquiry`, `/Ecr/settle`,
+`/Ecr/CheckReachability`, `/Ecr/closeReceipt`.
 
 ---
 
@@ -586,12 +591,69 @@ refund; on Web Service it takes the reference from the result.
 
 ---
 
-## 15. What Web Service does not support
+## 15. Settlement (Wi‑Fi, USB cable, and Web Service)
+
+Closes the current batch and prints the settlement receipt. The samples confirm with the
+cashier first (**Manual settlement**), because the terminal starts as soon as the request
+arrives. The engine calls `session.SettlementAsync`. A lost answer is safe to repeat: a batch
+that closed answers `NothingToSettle` the next time.
+
+```csharp
+EcrSettlement settlement = await session.SettlementAsync();
+
+switch (settlement)
+{
+    case EcrSettlement.Settled settled:
+        screen.Show(settled.BatchId, settled.NetAmount, settled.Totals);
+        break;
+    case EcrSettlement.NothingToSettle nothing:
+        screen.Show(nothing.Message);
+        break;
+    case EcrSettlement.NotSettled open:
+        screen.Show(open.Reason);
+        break;
+    case EcrSettlement.Failed failed:
+        screen.Show(failed.Failure.Message);   // the batch may or may not have closed
+        break;
+}
+```
+
+Amounts on `Settled` are major units. `Totals` has `SALE`, `REFUND`, `VOID`, `PRE_AUTH`, and
+`CAPTURE`. On Wi‑Fi and USB, **Close receipt** on that result puts the settlement summary away.
+Web Service close receipt still needs the sale, void, or refund reference, which a settlement
+result does not supply.
+
+The web sample starts the same run with `POST /api/transactions/settlement`
+`{ "terminalSerial": "..." }` and polls it like a sale.
+
+---
+
+## 16. Check reachability (Web Service)
+
+A sale does not probe the Hub. **Check reachability** is its own action. It posts
+`/Ecr/CheckReachability` on the probe budget.
+
+```csharp
+EcrReachability? check = await session.CheckReachabilityAsync();
+if (check is { Reachable: false })
+    screen.Show(check.Error);
+```
+
+`TransactionEngine.CheckWebServiceReachabilityAsync` wraps that and returns the sentence the
+dialog shows. On Wi‑Fi and USB the engine still calls `ProbeReachabilityAsync` before a sale;
+that call returns null on Web Service and is skipped. The web sample is
+`POST /api/transactions/reachability` and answers `{ "reachable": true, "message": "..." }`.
+
+---
+
+## 17. What Web Service does not support
 
 | Operation | Wi‑Fi and USB cable | Web Service |
 |---|---|---|
 | `ReceiptAsync` / e-receipt QR | Yes | **No** — UI says so; the session returns `EcrReceipt.Unavailable` |
-| Reachability probe | Yes | **No** — `ProbeReachabilityAsync` is `null`, skipped |
+| Probe before a sale | Yes | **No** — `ProbeReachabilityAsync` is `null`, skipped |
+| Check reachability | The sale probe covers the link | **Yes** — `CheckReachabilityAsync`, only when asked |
+| Settlement | Yes (`SETTLEMENT`) | Yes (`/Ecr/settle`) |
 | `originalTerminalId` (other till) | Yes | Ignored on an opened Web Service session |
 | Auto-inquire after lost sale | Yes (SDK default) | **No** — offer **Inquire by reference** |
 
